@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -78,8 +79,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -105,6 +108,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.AccountEntity
+import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.DashboardCardType
 import com.example.data.local.model.TransactionType
@@ -120,6 +124,7 @@ import com.example.ui.components.modular.LiquidVsLockedCard
 import com.example.ui.components.modular.LongTermExpectedCard
 import com.example.ui.components.modular.MoneyFlowCard
 import com.example.ui.components.modular.MonthlySpendingTrendsCard
+import com.example.ui.components.modular.PlannedPayoutsCard
 import com.example.ui.components.modular.ProjectTrackerCard
 import com.example.ui.components.modular.SavingsRateCard
 import com.example.ui.components.modular.SpendingCategoriesCard
@@ -150,6 +155,7 @@ fun DashboardScreen(
     onNavigateToWidgets: () -> Unit = {},
     onNavigateToReceiptInbox: () -> Unit = {},
     onNavigateToAssets: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
     initialOpenQuickAdd: Boolean = false,
     onQuickAddHandled: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -173,11 +179,15 @@ fun DashboardScreen(
     val categoryExpenses by viewModel.categoryExpenses.collectAsState()
     val monthlySpendingTrends by viewModel.monthlySpendingTrends.collectAsState()
     val pendingReceiptCount by viewModel.pendingReceiptCount.collectAsState()
+    val plannedPayouts by viewModel.allPlannedPayouts.collectAsState()
     val hideMoney by viewModel.hideMoney.collectAsState()
+
+    val canUndo by viewModel.canUndo.collectAsState()
 
     var selectedCardDetail by remember { mutableStateOf<DashboardCardType?>(null) }
     var showAddTransactionSheet by remember { mutableStateOf(initialOpenQuickAdd) }
     var showAddAccountSheet by remember { mutableStateOf(false) }
+    var targetParentAccountIdForSubAccount by remember { mutableStateOf<Long?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -208,7 +218,19 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         viewModel.eventFlow.collectLatest { event ->
             when (event) {
-                is DashboardEvent.TransactionLogged -> snackbarHostState.showSnackbar(event.message)
+                is DashboardEvent.TransactionLogged -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = if (event.canUndo) "UNDO" else null,
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.undoLastTransaction()
+                    }
+                }
+                is DashboardEvent.TransactionUndone -> {
+                    snackbarHostState.showSnackbar(event.message, duration = SnackbarDuration.Short)
+                }
                 is DashboardEvent.DebtUpdated -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.AccountCreated -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.ProjectUpdated -> snackbarHostState.showSnackbar(event.message)
@@ -219,6 +241,7 @@ fun DashboardScreen(
                 is DashboardEvent.ReceiptConverted -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.ReceiptDiscarded -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.AssetUpdated -> snackbarHostState.showSnackbar(event.message)
+                is DashboardEvent.PlannedPayoutUpdated -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.SyncCompleted -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.ExportCompleted -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.Error -> snackbarHostState.showSnackbar(event.error)
@@ -260,6 +283,14 @@ fun DashboardScreen(
                                 onClick = {
                                     showMenu = false
                                     onNavigateToSettings()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Analytics & Forecast") },
+                                leadingIcon = { Icon(Icons.Default.TrendingUp, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToAnalytics()
                                 }
                             )
                             DropdownMenuItem(
@@ -324,6 +355,19 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    if (canUndo) {
+                        IconButton(
+                            onClick = { viewModel.undoLastTransaction() },
+                            modifier = Modifier.testTag("dashboard_undo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo Transaction",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = { viewModel.toggleHideMoney(!hideMoney) },
                         modifier = Modifier.testTag("dashboard_toggle_hide_money")
@@ -472,13 +516,20 @@ fun DashboardScreen(
                 }
 
                 // -------------------------------------------------------------
-                // PERMANENT HERO ITEM 2: Accounts Breakdown Row (Modes of Cash)
+                // PERMANENT HERO ITEM 2: Accounts Breakdown Row (Accounts & Sub-Accounts)
                 // -------------------------------------------------------------
                 item(key = "PERMANENT_ACCOUNTS_BREAKDOWN", contentType = "accounts_grid") {
                     AccountsBreakdownRow(
                         accounts = uiState.accounts,
                         hideMoney = hideMoney,
-                        onAddAccountClick = { showAddAccountSheet = true },
+                        onAddAccountClick = {
+                            targetParentAccountIdForSubAccount = null
+                            showAddAccountSheet = true
+                        },
+                        onAddSubAccountClick = { parentId ->
+                            targetParentAccountIdForSubAccount = parentId
+                            showAddAccountSheet = true
+                        },
                         onAccountClick = onNavigateToAccountLog
                     )
                 }
@@ -496,7 +547,8 @@ fun DashboardScreen(
                         onNavigateToDebts = onNavigateToDebts,
                         onNavigateToCommission = onNavigateToCommission,
                         onNavigateToSubscriptions = onNavigateToSubscriptions,
-                        onNavigateToAssets = onNavigateToAssets
+                        onNavigateToAssets = onNavigateToAssets,
+                        onNavigateToAnalytics = onNavigateToAnalytics
                     )
                 }
 
@@ -602,6 +654,21 @@ fun DashboardScreen(
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
                         }
+                        DashboardCardType.PLANNED_PAYOUTS -> {
+                            PlannedPayoutsCard(
+                                plannedPayouts = plannedPayouts,
+                                currencyCode = uiState.baseCurrency,
+                                onViewAllClicked = onNavigateToSubscriptions,
+                                onPayNowClicked = { payout: PlannedPayoutEntity ->
+                                    val targetAcc = payout.targetAccountId ?: uiState.accounts.firstOrNull()?.id
+                                    if (targetAcc != null) {
+                                        viewModel.markPlannedPayoutAsPaid(payout, targetAcc)
+                                    }
+                                },
+                                onClick = { selectedCardDetail = DashboardCardType.PLANNED_PAYOUTS },
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
                     }
                 }
 
@@ -694,7 +761,7 @@ fun DashboardScreen(
             categories = categories,
             baseCurrency = uiState.baseCurrency,
             onDismissRequest = { showAddTransactionSheet = false },
-            onSaveTransaction = { amount, type, accountId, toAccountId, categoryId, labels, note ->
+            onSaveTransaction = { amount, type, accountId, toAccountId, categoryId, labels, note, proofUri ->
                 viewModel.addQuickTransaction(
                     amount = amount,
                     type = type,
@@ -702,7 +769,8 @@ fun DashboardScreen(
                     toAccountId = toAccountId,
                     categoryId = categoryId,
                     labels = labels,
-                    note = note
+                    note = note,
+                    proofImageUri = proofUri
                 )
                 showAddTransactionSheet = false
             }
@@ -712,8 +780,13 @@ fun DashboardScreen(
     if (showAddAccountSheet) {
         AddAccountSheet(
             defaultCurrency = uiState.baseCurrency,
-            onDismissRequest = { showAddAccountSheet = false },
-            onSaveAccount = { name, type, initialBalance, color, interestRate, compFreq, currencyCode, isLocked, lockedUntil, linkedAppPackage ->
+            allAccounts = uiState.accounts,
+            preselectedParentAccountId = targetParentAccountIdForSubAccount,
+            onDismissRequest = {
+                showAddAccountSheet = false
+                targetParentAccountIdForSubAccount = null
+            },
+            onSaveAccount = { name, type, initialBalance, color, interestRate, compFreq, currencyCode, isLocked, lockedUntil, linkedAppPackage, includeInTally, parentAccountId, subAccountType ->
                 viewModel.addAccount(
                     name = name,
                     type = type,
@@ -724,9 +797,13 @@ fun DashboardScreen(
                     currencyCode = currencyCode,
                     isLocked = isLocked,
                     lockedUntil = lockedUntil,
-                    linkedAppPackage = linkedAppPackage
+                    linkedAppPackage = linkedAppPackage,
+                    includeInTally = includeInTally,
+                    parentAccountId = parentAccountId,
+                    subAccountType = subAccountType
                 )
                 showAddAccountSheet = false
+                targetParentAccountIdForSubAccount = null
             }
         )
     }
@@ -746,7 +823,7 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "You currently have ${uiState.accounts.size} active Cash Modes configured. All amounts are calculated dynamically from your verified cleared ledger.",
+                            text = "You currently have ${uiState.accounts.size} active Accounts and Sub-Accounts configured. All amounts are calculated dynamically from your verified cleared ledger.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1135,6 +1212,30 @@ fun DashboardScreen(
                         }
                     }
                 }
+                DashboardCardType.PLANNED_PAYOUTS -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Scheduled One-Off Commitments",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val pending = plannedPayouts.filter { it.status.equals("PENDING", ignoreCase = true) }
+                        Text(
+                            text = "Total scheduled: ${CurrencyUtils.formatCurrency(pending.sumOf { it.amount }, uiState.baseCurrency)} across ${pending.size} upcoming commitment(s). One-off payouts do not recur and are distinct from debts and freelance milestones.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = {
+                                selectedCardDetail = null
+                                onNavigateToSubscriptions()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Open Commitments & Payouts Hub →", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1155,6 +1256,7 @@ private fun DashboardNavigationGrid(
     onNavigateToCommission: () -> Unit,
     onNavigateToSubscriptions: () -> Unit,
     onNavigateToAssets: () -> Unit,
+    onNavigateToAnalytics: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1163,6 +1265,61 @@ private fun DashboardNavigationGrid(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Analytics & Cashflow Projection Banner
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigateToAnalytics() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = "Analytics & Cashflow Forecast",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "Financial calendar, health score & burn rate",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.Default.Launch,
+                    contentDescription = "View Analytics",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1446,17 +1603,37 @@ fun TotalBalanceHeroCard(
 }
 
 /**
- * Permanent Hero Item 2: 2-Column Grid of Clickable Colored Account Cards (No-Scroll Mode).
+ * Permanent Hero Item 2: Compact Accounts & Sub-Accounts Quick Cards (Visible at a glance).
  */
 @Composable
 fun AccountsBreakdownRow(
     accounts: List<AccountEntity>,
     hideMoney: Boolean = false,
     onAddAccountClick: () -> Unit,
+    onAddSubAccountClick: (Long) -> Unit,
     onAccountClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val chunkedAccounts by remember(accounts) { derivedStateOf { accounts.chunked(2) } }
+    val rootAccounts by remember(accounts) {
+        derivedStateOf { accounts.filter { it.parentAccountId == null } }
+    }
+    val subAccountsByParent by remember(accounts) {
+        derivedStateOf {
+            accounts.filter { it.parentAccountId != null }.groupBy { it.parentAccountId!! }
+        }
+    }
+    val orphanSubAccounts by remember(accounts) {
+        derivedStateOf {
+            accounts.filter { it.parentAccountId != null && accounts.none { p -> p.id == it.parentAccountId } }
+        }
+    }
+
+    val (accountsWithSub, standaloneAccounts) = remember(rootAccounts, subAccountsByParent) {
+        rootAccounts.partition { (subAccountsByParent[it.id]?.size ?: 0) > 0 }
+    }
+    val allStandalone = remember(standaloneAccounts, orphanSubAccounts) {
+        standaloneAccounts + orphanSubAccounts
+    }
 
     Column(
         modifier = modifier
@@ -1466,7 +1643,7 @@ fun AccountsBreakdownRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1475,11 +1652,11 @@ fun AccountsBreakdownRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "MODES OF CASH",
+                    text = "ACCOUNTS & SUB-ACCOUNTS",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    letterSpacing = 0.8.sp
                 )
                 if (accounts.isNotEmpty()) {
                     Surface(
@@ -1499,18 +1676,18 @@ fun AccountsBreakdownRow(
 
             TextButton(
                 onClick = onAddAccountClick,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier.height(28.dp)
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier.height(26.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
-                    text = "Add Mode",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "Add Account",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -1518,7 +1695,7 @@ fun AccountsBreakdownRow(
 
         if (accounts.isEmpty()) {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                 ),
@@ -1527,7 +1704,7 @@ fun AccountsBreakdownRow(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1538,7 +1715,7 @@ fun AccountsBreakdownRow(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Add cash, bank, or e-wallet accounts.",
+                            text = "Add cash, bank, e-wallet, or sub-accounts (savings, time deposits).",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1551,50 +1728,42 @@ fun AccountsBreakdownRow(
         } else {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                chunkedAccounts.forEach { rowAccounts ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowAccounts.forEach { account ->
-                            AccountMiniCard(
-                                account = account,
-                                hideMoney = hideMoney,
-                                onClick = { onAccountClick(account.id) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        if (rowAccounts.size == 1) {
-                            OutlinedCard(
-                                onClick = onAddAccountClick,
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(84.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(8.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Add Mode",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                // 1. Grouped Parent + Sub-Accounts (Clean, Compact Container)
+                accountsWithSub.forEach { rootAccount ->
+                    val childSubAccounts = subAccountsByParent[rootAccount.id] ?: emptyList()
+                    GroupedAccountCard(
+                        parentAccount = rootAccount,
+                        subAccounts = childSubAccounts,
+                        hideMoney = hideMoney,
+                        onAddSubAccount = { onAddSubAccountClick(rootAccount.id) },
+                        onAccountClick = onAccountClick,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // 2. Standalone Accounts & Orphan Sub-Accounts in 2-Column Compact Grid
+                if (allStandalone.isNotEmpty()) {
+                    allStandalone.chunked(2).forEach { rowAccounts ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowAccounts.forEach { acc ->
+                                CompactAccountCard(
+                                    account = acc,
+                                    hideMoney = hideMoney,
+                                    onAddSubAccount = if (acc.parentAccountId == null) {
+                                        { onAddSubAccountClick(acc.id) }
+                                    } else null,
+                                    onClick = { onAccountClick(acc.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            // Balance the row if odd count
+                            if (rowAccounts.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }
@@ -1604,10 +1773,305 @@ fun AccountsBreakdownRow(
     }
 }
 
+/**
+ * Compact Grouped Account Card displaying parent account header and its nested sub-accounts.
+ */
 @Composable
-fun AccountMiniCard(
+fun GroupedAccountCard(
+    parentAccount: AccountEntity,
+    subAccounts: List<AccountEntity>,
+    hideMoney: Boolean,
+    onAddSubAccount: () -> Unit,
+    onAccountClick: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val matchingApp = remember(parentAccount.name, parentAccount.linkedAppPackage) {
+        BankAppLauncher.findMatchingBankApp(parentAccount.name, parentAccount.linkedAppPackage)
+    }
+
+    val accountIcon: ImageVector = remember(parentAccount.type) {
+        when (parentAccount.type.lowercase(Locale.ROOT)) {
+            "cash" -> Icons.Default.Payments
+            "bank account", "bank" -> Icons.Default.AccountBalance
+            "time deposit", "savings" -> Icons.Default.Savings
+            "e-wallet" -> Icons.Default.Smartphone
+            "investment" -> Icons.Default.TrendingUp
+            else -> Icons.Default.CreditCard
+        }
+    }
+
+    val parentCardColor = remember(parentAccount.color) { Color(parentAccount.color) }
+    val formattedBalance = remember(parentAccount.currentBalance, parentAccount.currencyCode, hideMoney) {
+        CurrencyUtils.formatCurrency(parentAccount.currentBalance, parentAccount.currencyCode, hideMoney)
+    }
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        modifier = modifier
+            .testTag("grouped_account_card_${parentAccount.id}")
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Parent Account Header
+            Surface(
+                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                color = parentCardColor,
+                onClick = { onAccountClick(parentAccount.id) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("account_card_${parentAccount.id}")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = accountIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = parentAccount.name,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+                                if (!parentAccount.includeInTally) {
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = Color(0xFFD32F2F).copy(alpha = 0.7f)
+                                    ) {
+                                        Text(
+                                            text = "Off",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp),
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "${parentAccount.currencyCode} • ${parentAccount.type}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = Color.White.copy(alpha = 0.85f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (matchingApp != null || !parentAccount.linkedAppPackage.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color.Black.copy(alpha = 0.28f),
+                                modifier = Modifier.clickable {
+                                    BankAppLauncher.launchBankApp(context, parentAccount.name, parentAccount.linkedAppPackage)
+                                }
+                            ) {
+                                Text(
+                                    text = "App",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = formattedBalance,
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (parentAccount.currentBalance < 0.0) Color(0xFFFFCDD2) else Color.White,
+                            maxLines = 1
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color.White.copy(alpha = 0.24f),
+                            modifier = Modifier.clickable { onAddSubAccount() }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Sub-Account",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(1.dp))
+                                Text(
+                                    text = "Sub",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Nested Sub-Accounts Section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                subAccounts.forEach { subAcc ->
+                    SubAccountCompactRow(
+                        subAccount = subAcc,
+                        hideMoney = hideMoney,
+                        onClick = { onAccountClick(subAcc.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Compact Row Item for sub-accounts within grouped parent card.
+ */
+@Composable
+fun SubAccountCompactRow(
+    subAccount: AccountEntity,
+    hideMoney: Boolean,
+    onClick: () -> Unit
+) {
+    val formattedBalance = remember(subAccount.currentBalance, subAccount.currencyCode, hideMoney) {
+        CurrencyUtils.formatCurrency(subAccount.currentBalance, subAccount.currencyCode, hideMoney)
+    }
+    val typeBadge = subAccount.subAccountType ?: subAccount.type
+    val yieldText = if (subAccount.interestRatePa > 0f) {
+        String.format(Locale.getDefault(), "%.1f%%", subAccount.interestRatePa)
+    } else null
+
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("sub_account_row_${subAccount.id}")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "↳",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(Color(subAccount.color))
+                )
+                Text(
+                    text = subAccount.name,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        text = typeBadge,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                    )
+                }
+                if (yieldText != null) {
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = Color(0xFF00C853).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = yieldText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                            color = Color(0xFF00C853),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                        )
+                    }
+                }
+                if (subAccount.isLocked || subAccount.lockedUntil != null) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Locked",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(9.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = formattedBalance,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+/**
+ * Compact Single Account Card for 2-column grid layout (Height ~56dp).
+ */
+@Composable
+fun CompactAccountCard(
     account: AccountEntity,
     hideMoney: Boolean = false,
+    onAddSubAccount: (() -> Unit)? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1631,11 +2095,6 @@ fun AccountMiniCard(
     val formattedBalance = remember(account.currentBalance, account.currencyCode, hideMoney) {
         CurrencyUtils.formatCurrency(account.currentBalance, account.currencyCode, hideMoney)
     }
-    val formattedLockDate = remember(account.lockedUntil) {
-        account.lockedUntil?.let {
-            SimpleDateFormat("MMM d", Locale.getDefault()).format(it)
-        }
-    }
     val interestText = remember(account.interestRatePa) {
         if (account.interestRatePa > 0f) {
             String.format(Locale.getDefault(), "+%.1f%%", account.interestRatePa)
@@ -1644,20 +2103,19 @@ fun AccountMiniCard(
 
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = cardColor
-        ),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
         modifier = modifier
-            .height(84.dp)
+            .height(56.dp)
             .testTag("account_card_${account.id}")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Row 1: Icon, Name, Currency / App
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1666,11 +2124,11 @@ fun AccountMiniCard(
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(22.dp)
+                            .size(16.dp)
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.22f)),
                         contentAlignment = Alignment.Center
@@ -1679,12 +2137,12 @@ fun AccountMiniCard(
                             imageVector = accountIcon,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(10.dp)
                         )
                     }
                     Text(
                         text = account.name,
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         maxLines = 1
@@ -1693,124 +2151,139 @@ fun AccountMiniCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     if (matchingApp != null || !account.linkedAppPackage.isNullOrBlank()) {
                         Surface(
-                            shape = RoundedCornerShape(5.dp),
+                            shape = RoundedCornerShape(3.dp),
                             color = Color.Black.copy(alpha = 0.28f),
                             modifier = Modifier.clickable {
                                 BankAppLauncher.launchBankApp(context, account.name, account.linkedAppPackage)
                             }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Launch,
-                                    contentDescription = "Open App",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(9.dp)
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(
-                                    text = "App",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                            Text(
+                                text = "App",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            )
                         }
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(5.dp),
+                        shape = RoundedCornerShape(3.dp),
                         color = Color.Black.copy(alpha = 0.22f)
                     ) {
                         Text(
                             text = account.currencyCode,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp),
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                         )
                     }
                 }
             }
 
-            Column {
+            // Row 2: Balance & Indicators
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = formattedBalance,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp),
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    maxLines = 1
+                    color = if (account.currentBalance < 0.0) Color(0xFFFFCDD2) else Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.weight(1f, fill = false),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = account.type,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = Color.White.copy(alpha = 0.82f),
-                            maxLines = 1
-                        )
-                        if (account.isLocked || account.lockedUntil != null) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Locked",
-                                tint = Color(0xFFFFD54F),
-                                modifier = Modifier.size(10.dp)
+                    if (!account.includeInTally) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color(0xFFD32F2F).copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                text = "Off",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 0.5.dp)
                             )
                         }
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (formattedLockDate != null) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color.Black.copy(alpha = 0.25f)
-                            ) {
-                                Text(
-                                    text = "Till $formattedLockDate",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                                )
-                            }
+                    if (interestText != null) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color.White.copy(alpha = 0.25f)
+                        ) {
+                            Text(
+                                text = interestText,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 0.5.dp)
+                            )
                         }
-                        if (interestText != null) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color.White.copy(alpha = 0.25f)
-                            ) {
-                                Text(
-                                    text = interestText,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                                )
-                            }
+                    }
+
+                    if (account.isLocked || account.lockedUntil != null) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Locked",
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier.size(9.dp)
+                        )
+                    }
+
+                    if (onAddSubAccount != null) {
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Color.White.copy(alpha = 0.22f),
+                            modifier = Modifier.clickable { onAddSubAccount() }
+                        ) {
+                            Text(
+                                text = "+Sub",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Legacy alias for backwards compatibility
+ */
+@Composable
+fun AccountMiniCard(
+    account: AccountEntity,
+    hideMoney: Boolean = false,
+    subAccountCount: Int = 0,
+    onAddSubAccount: (() -> Unit)? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    CompactAccountCard(
+        account = account,
+        hideMoney = hideMoney,
+        onAddSubAccount = onAddSubAccount,
+        onClick = onClick,
+        modifier = modifier
+    )
 }
 
 @Composable

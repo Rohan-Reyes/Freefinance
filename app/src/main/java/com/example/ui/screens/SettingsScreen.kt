@@ -89,6 +89,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.preferences.AppThemePreset
 import com.example.data.preferences.HeroBackgroundStyle
 import com.example.util.CurrencyUtils
 import com.example.viewmodels.DashboardEvent
@@ -105,12 +106,14 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToWidgets: () -> Unit = {},
     onNavigateToApkReleases: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val cloudStatus by viewModel.cloudBackupStatus.collectAsState()
     val heroBackgroundStyle by viewModel.heroBackgroundStyle.collectAsState()
+    val appThemePreset by viewModel.appThemePreset.collectAsState()
     val hideMoney by viewModel.hideMoney.collectAsState()
 
     // Dialog & Confirmation states
@@ -354,6 +357,125 @@ fun SettingsScreen(
             }
 
             // -------------------------------------------------------------
+            // SECTION: APP THEMES & COLOR PALETTES (MATERIAL YOU & MATCHING HERO PRESETS)
+            // -------------------------------------------------------------
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "App Theme & Color Palette",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Full app theme presets matching Material You and hero cards",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Theme Presets List
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AppThemePreset.entries.forEach { preset ->
+                                val isSelected = appThemePreset == preset
+                                Surface(
+                                    onClick = { viewModel.setAppThemePreset(preset, syncHeroStyle = true) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        // Color Swatch Pill
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .padding(2.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            val (c1, c2) = when (preset) {
+                                                AppThemePreset.MATERIAL_YOU -> Color(0xFF6750A4) to Color(0xFF625B71)
+                                                AppThemePreset.EMERALD_AURORA -> Color(0xFF00C853) to Color(0xFF00E676)
+                                                AppThemePreset.OCEAN_INDIGO -> Color(0xFF00D2FF) to Color(0xFF3A7BD5)
+                                                AppThemePreset.SUNSET_GLOW -> Color(0xFFFF5E3A) to Color(0xFFFF2A68)
+                                                AppThemePreset.MIDNIGHT_NEBULA -> Color(0xFF9D50BB) to Color(0xFF6E48AA)
+                                                AppThemePreset.GOLDEN_LUXE -> Color(0xFFFFAF7B) to Color(0xFFD76D77)
+                                                AppThemePreset.CYBERPUNK_NEON -> Color(0xFFFF007F) to Color(0xFF00F0FF)
+                                                AppThemePreset.TITANIUM_SLATE -> Color(0xFF606C88) to Color(0xFF3F4C6B)
+                                            }
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(c1))
+                                            Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(c2))
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = preset.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = preset.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Selected",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // -------------------------------------------------------------
             // SECTION: HERO CARD CUSTOMIZATION (SOLID / GRADIENT THEMES)
             // -------------------------------------------------------------
             item {
@@ -526,6 +648,68 @@ fun SettingsScreen(
                             Icon(Icons.Default.Widgets, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Configure & Pin Widgets", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // -------------------------------------------------------------
+            // SECTION: ANALYTICS & CASHFLOW FORECASTING
+            // -------------------------------------------------------------
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Analytics,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Analytics & Cashflow Forecast",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Daily cash heatmap, burn velocity, health score & MoM variance",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onNavigateToAnalytics,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Deep Analytics Hub", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

@@ -12,6 +12,27 @@ import com.example.data.local.model.DashboardCardType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
+enum class AppThemePreset(
+    val title: String,
+    val description: String,
+    val defaultHeroStyle: HeroBackgroundStyle
+) {
+    MATERIAL_YOU("Material You", "Dynamic wallpaper-extracted palette (Android 12+)", HeroBackgroundStyle.SOLID),
+    EMERALD_AURORA("Emerald Aurora", "Lush emerald fintech greens, mint & teal", HeroBackgroundStyle.EMERALD_AURORA),
+    OCEAN_INDIGO("Ocean Indigo", "Royal sapphire, electric blue & deep navy", HeroBackgroundStyle.GRADIENT),
+    SUNSET_GLOW("Sunset Glow", "Vibrant crimson, radiant coral & warm amber", HeroBackgroundStyle.SUNSET_GLOW),
+    MIDNIGHT_NEBULA("Midnight Nebula", "Cosmic purple, electric violet & dark plum", HeroBackgroundStyle.MIDNIGHT_NEBULA),
+    GOLDEN_LUXE("Golden Luxe", "Warm amber, champagne gold & rich bronze", HeroBackgroundStyle.GOLDEN_LUXE),
+    CYBERPUNK_NEON("Cyberpunk Neon", "High-contrast neon cyan, magenta & carbon", HeroBackgroundStyle.GRADIENT),
+    TITANIUM_SLATE("Titanium Slate", "Minimalist graphite, steel & slate", HeroBackgroundStyle.SOLID);
+
+    companion object {
+        fun fromString(value: String?): AppThemePreset {
+            return entries.find { it.name.equals(value, ignoreCase = true) } ?: EMERALD_AURORA
+        }
+    }
+}
+
 enum class HeroBackgroundStyle(
     val title: String,
     val description: String
@@ -39,8 +60,20 @@ class UserPreferencesRepository(private val context: Context) {
         val DASHBOARD_CARD_ORDER = stringPreferencesKey("dashboard_card_order")
         val BASE_CURRENCY = stringPreferencesKey("base_currency")
         val HERO_BACKGROUND_STYLE = stringPreferencesKey("hero_background_style")
+        val APP_THEME_PRESET = stringPreferencesKey("app_theme_preset")
         val INCLUDE_ASSETS_IN_HERO = booleanPreferencesKey("include_assets_in_hero")
         val HIDE_MONEY = booleanPreferencesKey("hide_money")
+    }
+
+    val appThemePreset: Flow<AppThemePreset> = context.userDataStore.data
+        .map { preferences ->
+            AppThemePreset.fromString(preferences[PreferencesKeys.APP_THEME_PRESET])
+        }
+
+    suspend fun setAppThemePreset(preset: AppThemePreset) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_THEME_PRESET] = preset.name
+        }
     }
 
     val hideMoney: Flow<Boolean> = context.userDataStore.data

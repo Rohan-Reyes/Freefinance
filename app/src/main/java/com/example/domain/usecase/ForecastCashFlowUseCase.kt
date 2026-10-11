@@ -108,35 +108,20 @@ class ForecastCashFlowUseCase {
         txCal.set(Calendar.SECOND, 0)
         txCal.set(Calendar.MILLISECOND, 0)
 
-        // Target date must be on or after original transaction date
+        // Target date must be on or after original transaction date (or same day)
         if (targetCal.before(txCal)) return false
 
-        val rule = RecurrenceRule.fromString(tx.recurrenceRule)
-
-        return when {
-            // One-off Planned transaction matching the exact calendar date
-            rule == RecurrenceRule.NONE && tx.status.equals(TransactionStatus.PLANNED.displayName, ignoreCase = true) -> {
-                isSameDay(txCal, targetCal)
-            }
-            // Daily recurring rule
-            rule == RecurrenceRule.DAILY -> true
-            // Weekly recurring rule
-            rule == RecurrenceRule.WEEKLY -> {
-                txCal.get(Calendar.DAY_OF_WEEK) == targetCal.get(Calendar.DAY_OF_WEEK)
-            }
-            // Monthly recurring rule
-            rule == RecurrenceRule.MONTHLY -> {
-                val txDayOfMonth = txCal.get(Calendar.DAY_OF_MONTH)
-                val maxDayOfTargetMonth = targetCal.getActualMaximum(Calendar.DAY_OF_MONTH)
-                val targetDayOfMonth = targetCal.get(Calendar.DAY_OF_MONTH)
-                if (txDayOfMonth > maxDayOfTargetMonth) {
-                    targetDayOfMonth == maxDayOfTargetMonth
-                } else {
-                    txDayOfMonth == targetDayOfMonth
-                }
-            }
-            else -> false
+        val rule = tx.recurrenceRule?.trim() ?: "None"
+        if (rule.equals("None", ignoreCase = true)) {
+            return tx.status.equals(TransactionStatus.PLANNED.displayName, ignoreCase = true) && isSameDay(txCal, targetCal)
         }
+
+        val targetMonth = targetCal.get(Calendar.MONTH)
+        val targetYear = targetCal.get(Calendar.YEAR)
+        val targetDayOfMonth = targetCal.get(Calendar.DAY_OF_MONTH)
+
+        val monthOccurrences = com.example.util.RecurrenceHelper.getOccurrencesInMonth(rule, tx.date, targetMonth, targetYear)
+        return targetDayOfMonth in monthOccurrences
     }
 
     private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {

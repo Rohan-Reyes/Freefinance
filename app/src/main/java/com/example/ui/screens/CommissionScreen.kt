@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BusinessCenter
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.HourglassEmpty
@@ -91,6 +92,8 @@ fun CommissionScreen(
     var showAddProjectDialog by remember { mutableStateOf(false) }
     var selectedProjectForMilestone by remember { mutableStateOf<FreelanceProjectEntity?>(null) }
     var milestoneToPay by remember { mutableStateOf<MilestoneEntity?>(null) }
+    var projectToEdit by remember { mutableStateOf<FreelanceProjectEntity?>(null) }
+    var milestoneToEdit by remember { mutableStateOf<MilestoneEntity?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -138,6 +141,8 @@ fun CommissionScreen(
                         projectWithMilestones = item,
                         currencyCode = baseCurrency,
                         onAddMilestone = { selectedProjectForMilestone = item.project },
+                        onEditProject = { projectToEdit = item.project },
+                        onEditMilestone = { milestone -> milestoneToEdit = milestone },
                         onMarkMilestonePaid = { milestone -> milestoneToPay = milestone },
                         onDeleteProject = { viewModel.deleteFreelanceProject(item.project) },
                         onDeleteMilestone = { milestone -> viewModel.deleteMilestone(milestone) }
@@ -159,6 +164,19 @@ fun CommissionScreen(
         )
     }
 
+    // Edit Project Dialog
+    projectToEdit?.let { project ->
+        EditProjectDialog(
+            project = project,
+            currencyCode = baseCurrency,
+            onDismiss = { projectToEdit = null },
+            onConfirm = { updatedProject ->
+                viewModel.updateFreelanceProject(updatedProject)
+                projectToEdit = null
+            }
+        )
+    }
+
     // Add Milestone Dialog
     selectedProjectForMilestone?.let { project ->
         AddMilestoneDialog(
@@ -168,6 +186,19 @@ fun CommissionScreen(
             onConfirm = { title, amount, date ->
                 viewModel.addMilestone(project.id, title, amount, date)
                 selectedProjectForMilestone = null
+            }
+        )
+    }
+
+    // Edit Milestone Dialog
+    milestoneToEdit?.let { milestone ->
+        EditMilestoneDialog(
+            milestone = milestone,
+            currencyCode = baseCurrency,
+            onDismiss = { milestoneToEdit = null },
+            onConfirm = { updatedMilestone ->
+                viewModel.updateMilestone(updatedMilestone)
+                milestoneToEdit = null
             }
         )
     }
@@ -192,6 +223,8 @@ private fun ProjectCard(
     projectWithMilestones: ProjectWithMilestones,
     currencyCode: String = "USD",
     onAddMilestone: () -> Unit,
+    onEditProject: () -> Unit,
+    onEditMilestone: (MilestoneEntity) -> Unit,
     onMarkMilestonePaid: (MilestoneEntity) -> Unit,
     onDeleteProject: () -> Unit,
     onDeleteMilestone: (MilestoneEntity) -> Unit
@@ -235,11 +268,20 @@ private fun ProjectCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onEditProject) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Project",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     IconButton(onClick = onDeleteProject) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete Project",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     IconButton(onClick = { isExpanded = !isExpanded }) {
@@ -318,6 +360,7 @@ private fun ProjectCard(
                             MilestoneItemRow(
                                 milestone = milestone,
                                 currencyCode = currencyCode,
+                                onEdit = { onEditMilestone(milestone) },
                                 onMarkPaid = { onMarkMilestonePaid(milestone) },
                                 onDelete = { onDeleteMilestone(milestone) }
                             )
@@ -333,6 +376,7 @@ private fun ProjectCard(
 private fun MilestoneItemRow(
     milestone: MilestoneEntity,
     currencyCode: String = "USD",
+    onEdit: () -> Unit,
     onMarkPaid: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -343,6 +387,7 @@ private fun MilestoneItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+            .clickable(onClick = onEdit)
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -388,7 +433,10 @@ private fun MilestoneItemRow(
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
                 text = CurrencyUtils.formatCurrency(milestone.amount, currencyCode),
                 style = MaterialTheme.typography.bodyMedium,
@@ -396,7 +444,16 @@ private fun MilestoneItemRow(
                 color = if (isPaid) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurface
             )
 
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+
+            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit Milestone",
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
 
             if (!isPaid) {
                 Button(
@@ -404,19 +461,19 @@ private fun MilestoneItemRow(
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
+                    modifier = Modifier.height(30.dp)
                 ) {
-                    Text("Mark Paid", fontSize = 11.sp)
+                    Text("Pay", fontSize = 11.sp)
                 }
-            } else {
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            }
+
+            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -647,6 +704,146 @@ private fun MarkMilestonePaidDialog(
                 enabled = accounts.isNotEmpty()
             ) {
                 Text("Confirm Payment")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun EditProjectDialog(
+    project: FreelanceProjectEntity,
+    currencyCode: String = "USD",
+    onDismiss: () -> Unit,
+    onConfirm: (FreelanceProjectEntity) -> Unit
+) {
+    var name by remember { mutableStateOf(project.projectName) }
+    var client by remember { mutableStateOf(project.client) }
+    var feeText by remember { mutableStateOf(String.format(Locale.US, "%.2f", project.totalExpectedFee)) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val currencySymbol = CurrencyUtils.getSymbol(currencyCode)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Freelance Project") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Project Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = client,
+                    onValueChange = { client = it },
+                    label = { Text("Client / Company Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = feeText,
+                    onValueChange = { feeText = it },
+                    label = { Text("Total Contract Fee") },
+                    prefix = { Text("$currencySymbol ") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val fee = feeText.toDoubleOrNull()
+                    if (name.isBlank() || client.isBlank()) {
+                        errorMessage = "Please enter project and client names"
+                        return@Button
+                    }
+                    if (fee == null || fee <= 0) {
+                        errorMessage = "Please enter a valid total fee"
+                        return@Button
+                    }
+                    onConfirm(project.copy(projectName = name.trim(), client = client.trim(), totalExpectedFee = fee))
+                }
+            ) {
+                Text("Save Changes")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun EditMilestoneDialog(
+    milestone: MilestoneEntity,
+    currencyCode: String = "USD",
+    onDismiss: () -> Unit,
+    onConfirm: (MilestoneEntity) -> Unit
+) {
+    var title by remember { mutableStateOf(milestone.title) }
+    var amountText by remember { mutableStateOf(String.format(Locale.US, "%.2f", milestone.amount)) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val currencySymbol = CurrencyUtils.getSymbol(currencyCode)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Milestone") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Milestone Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it },
+                    label = { Text("Milestone Amount") },
+                    prefix = { Text("$currencySymbol ") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = amountText.toDoubleOrNull()
+                    if (title.isBlank()) {
+                        errorMessage = "Please enter milestone title"
+                        return@Button
+                    }
+                    if (amount == null || amount <= 0) {
+                        errorMessage = "Please enter a valid amount"
+                        return@Button
+                    }
+                    onConfirm(milestone.copy(title = title.trim(), amount = amount))
+                }
+            ) {
+                Text("Save Changes")
             }
         },
         dismissButton = {

@@ -45,5 +45,16 @@ data class AccountEntity(
     val lockedUntil: Date? = null,
 
     @ColumnInfo(name = "linked_app_package")
-    val linkedAppPackage: String? = null
-)
+    val linkedAppPackage: String? = null,
+
+    @ColumnInfo(name = "include_in_tally", defaultValue = "1")
+    val includeInTally: Boolean = true,
+
+    @ColumnInfo(name = "parent_account_id", defaultValue = "NULL")
+    val parentAccountId: Long? = null,
+
+    @ColumnInfo(name = "sub_account_type", defaultValue = "NULL")
+    val subAccountType: String? = null // Time Deposit, Savings, Wallet, Pocket, Stash, Vault, Investment
+) {
+    val isSubAccount: Boolean get() = parentAccountId != null
+}

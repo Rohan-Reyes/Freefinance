@@ -15,6 +15,7 @@ import com.example.data.local.dao.CategoryDao
 import com.example.data.local.dao.DebtDao
 import com.example.data.local.dao.ExchangeRateDao
 import com.example.data.local.dao.FreelanceDao
+import com.example.data.local.dao.PlannedPayoutDao
 import com.example.data.local.dao.ReceiptDao
 import com.example.data.local.dao.TransactionDao
 import com.example.data.local.entity.AccountEntity
@@ -25,6 +26,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
 
@@ -43,9 +45,10 @@ import com.example.data.local.entity.TransactionEntity
         MilestoneEntity::class,
         ExchangeRateEntity::class,
         ReceiptEntity::class,
-        AssetEntity::class
+        AssetEntity::class,
+        PlannedPayoutEntity::class
     ],
-    version = 8,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,6 +63,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun exchangeRateDao(): ExchangeRateDao
     abstract fun receiptDao(): ReceiptDao
     abstract fun assetDao(): AssetDao
+    abstract fun plannedPayoutDao(): PlannedPayoutDao
 
     companion object {
         const val DATABASE_NAME = "finance_tracker_db"
@@ -108,6 +112,53 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `planned_payouts` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `amount` REAL NOT NULL,
+                        `currency_code` TEXT NOT NULL DEFAULT 'PHP',
+                        `due_date` INTEGER NOT NULL,
+                        `target_account_id` INTEGER,
+                        `category_id` INTEGER,
+                        `payee_or_vendor` TEXT,
+                        `notes` TEXT,
+                        `priority` TEXT NOT NULL DEFAULT 'NORMAL',
+                        `status` TEXT NOT NULL DEFAULT 'PENDING',
+                        `paid_date` INTEGER,
+                        `paid_transaction_id` INTEGER,
+                        `created_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `include_in_tally` INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `proof_image_uri` TEXT DEFAULT NULL")
+                db.execSQL("INSERT OR IGNORE INTO categories (name, icon_res_id, type, color) VALUES ('Motortaxi', 'ic_motortaxi', 'Expense', -14579213)")
+                db.execSQL("INSERT OR IGNORE INTO categories (name, icon_res_id, type, color) VALUES ('Jollibee', 'ic_food', 'Expense', -13447886)")
+                db.execSQL("INSERT OR IGNORE INTO categories (name, icon_res_id, type, color) VALUES ('McDo', 'ic_food', 'Expense', -26624)")
+                db.execSQL("INSERT OR IGNORE INTO categories (name, icon_res_id, type, color) VALUES ('Tech', 'ic_tech', 'Expense', -16738120)")
+                db.execSQL("INSERT OR IGNORE INTO categories (name, icon_res_id, type, color) VALUES ('Electronics', 'ic_electronics', 'Expense', -11751600)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `parent_account_id` INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `sub_account_type` TEXT DEFAULT NULL")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -118,7 +169,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration()
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
@@ -133,6 +184,11 @@ abstract class AppDatabase : RoomDatabase() {
                             db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Salary', 'ic_salary', 'Income', -11751600)")
                             db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Freelance', 'ic_freelance', 'Income', -16738120)")
                             db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Investments', 'ic_investment', 'Income', -12627531)")
+                            db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Motortaxi', 'ic_motortaxi', 'Expense', -14579213)")
+                            db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Jollibee', 'ic_food', 'Expense', -13447886)")
+                            db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('McDo', 'ic_food', 'Expense', -26624)")
+                            db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Tech', 'ic_tech', 'Expense', -16738120)")
+                            db.execSQL("INSERT INTO categories (name, icon_res_id, type, color) VALUES ('Electronics', 'ic_electronics', 'Expense', -11751600)")
                         }
                     })
                     .build()

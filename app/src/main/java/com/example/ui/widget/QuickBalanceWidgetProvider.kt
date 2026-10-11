@@ -28,9 +28,18 @@ class QuickBalanceWidgetProvider : AppWidgetProvider() {
             CoroutineScope(Dispatchers.IO).launch {
                 val db = AppDatabase.getDatabase(context)
                 val accounts = try { db.accountDao().getAllAccounts().first() } catch (e: Exception) { emptyList() }
-                val totalBalance = accounts.sumOf { it.currentBalance }
-                val count = accounts.size
+                val tallyAccounts = accounts.filter { it.includeInTally }
+                val rates = try { db.exchangeRateDao().getAllRates().first() } catch (e: Exception) { emptyList() }
                 val baseCurrency = try { UserPreferencesRepository(context).baseCurrency.first() } catch (e: Exception) { "PHP" }
+                val totalBalance = tallyAccounts.sumOf { acc ->
+                    CurrencyUtils.convert(
+                        amount = acc.currentBalance,
+                        fromCurrency = acc.currencyCode,
+                        toCurrency = baseCurrency,
+                        exchangeRates = rates
+                    )
+                }
+                val count = tallyAccounts.size
 
                 withContext(Dispatchers.Main) {
                     for (appWidgetId in appWidgetIds) {

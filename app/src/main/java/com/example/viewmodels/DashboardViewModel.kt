@@ -16,6 +16,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.AccountType
@@ -33,24 +34,45 @@ import com.example.data.local.model.ProjectWithMilestones
 import com.example.data.local.model.RecurrenceRule
 import com.example.data.local.model.TransactionStatus
 import com.example.data.local.model.TransactionType
+import com.example.data.preferences.AppThemePreset
 import com.example.data.preferences.HeroBackgroundStyle
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.FinanceRepository
 import com.example.data.sync.DataSyncManager
 import com.example.domain.usecase.ForecastCashFlowUseCase
+import com.example.ui.widget.FinanceAppWidgetManager
 import com.example.util.CurrencyUtils
 import com.example.util.DataExportUtils
 import com.example.util.ReceiptStorageHelper
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Date
+
+sealed interface UndoableAction {
+    data class Created(val transaction: TransactionEntity) : UndoableAction
+    data class Deleted(val transaction: TransactionEntity) : UndoableAction
+    data class Updated(val oldTransaction: TransactionEntity, val newTransaction: TransactionEntity) : UndoableAction
+    data class RecurringReceivedOrPaid(
+        val loggedTransaction: TransactionEntity,
+        val originalRecurringItem: TransactionEntity,
+        val advancedCycle: Boolean
+    ) : UndoableAction
+    data class PlannedPayoutPaid(
+        val payout: PlannedPayoutEntity,
+        val transaction: TransactionEntity
+    ) : UndoableAction
+}
 
 data class DashboardUiState(
     val totalBalance: Double = 0.0,
@@ -62,6 +84,8 @@ data class DashboardUiState(
     val baseCurrency: String = "USD",
     val exchangeRates: List<ExchangeRateEntity> = emptyList(),
     val accounts: List<AccountEntity> = emptyList(),
+    val tallyAccountsCount: Int = 0,
+    val excludedAccountsCount: Int = 0,
     val recentTransactions: List<TransactionEntity> = emptyList(),
     val isLoading: Boolean = false
 )
@@ -93,8 +117,17 @@ data class ExpectedReceivable(
     val sourceOrPerson: String
 )
 
+data class TransactionCelebrationData(
+    val amount: Double,
+    val type: TransactionType,
+    val currencyCode: String,
+    val note: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 sealed interface DashboardEvent {
-    data class TransactionLogged(val message: String) : DashboardEvent
+    data class TransactionLogged(val message: String, val canUndo: Boolean = false) : DashboardEvent
+    data class TransactionUndone(val message: String) : DashboardEvent
     data class DebtUpdated(val message: String) : DashboardEvent
     data class ProjectUpdated(val message: String) : DashboardEvent
     data class AccountCreated(val message: String) : DashboardEvent
@@ -105,6 +138,7 @@ sealed interface DashboardEvent {
     data class ReceiptConverted(val message: String) : DashboardEvent
     data class ReceiptDiscarded(val message: String) : DashboardEvent
     data class AssetUpdated(val message: String) : DashboardEvent
+    data class PlannedPayoutUpdated(val message: String) : DashboardEvent
     data class SyncCompleted(val message: String) : DashboardEvent
     data class ExportCompleted(val success: Boolean, val message: String) : DashboardEvent
     data class Error(val error: String) : DashboardEvent
@@ -115,13 +149,127 @@ class DashboardViewModel(
     private val preferencesRepository: UserPreferencesRepository,
     private val dataSyncManager: DataSyncManager? = null,
     private val cloudBackupManager: CloudBackupManager = CloudBackupManager(),
-    private val forecastUseCase: ForecastCashFlowUseCase = ForecastCashFlowUseCase()
+    private val forecastUseCase: ForecastCashFlowUseCase = ForecastCashFlowUseCase(),
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _eventFlow = MutableSharedFlow<DashboardEvent>()
     val eventFlow: SharedFlow<DashboardEvent> = _eventFlow.asSharedFlow()
 
+    private val _lastUndoableAction = MutableStateFlow<UndoableAction?>(null)
+    val lastUndoableAction: StateFlow<UndoableAction?> = _lastUndoableAction.asStateFlow()
+
+    val canUndo: StateFlow<Boolean> = _lastUndoableAction.map { it != null }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false
+        )
+
+    fun triggerWidgetRefresh() {
+        appContext?.let { ctx ->
+            try {
+                FinanceAppWidgetManager.updateAllWidgets(ctx)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun undoLastTransaction() {
+        val action = _lastUndoableAction.value ?: return
+        viewModelScope.launch {
+            try {
+                when (action) {
+                    is UndoableAction.Created -> {
+                        repository.deleteTransaction(action.transaction)
+                        val title = action.transaction.note?.takeIf { it.isNotBlank() } ?: action.transaction.type
+                        _eventFlow.emit(DashboardEvent.TransactionUndone("Undid: $title (${action.transaction.amount})"))
+                    }
+                    is UndoableAction.Deleted -> {
+                        repository.insertTransaction(action.transaction)
+                        val title = action.transaction.note?.takeIf { it.isNotBlank() } ?: action.transaction.type
+                        _eventFlow.emit(DashboardEvent.TransactionUndone("Restored: $title (${action.transaction.amount})"))
+                    }
+                    is UndoableAction.Updated -> {
+                        repository.updateClearedTransaction(action.oldTransaction, action.newTransaction)
+                        _eventFlow.emit(DashboardEvent.TransactionUndone("Reverted transaction edits"))
+                    }
+                    is UndoableAction.RecurringReceivedOrPaid -> {
+                        repository.deleteTransaction(action.loggedTransaction)
+                        if (action.advancedCycle) {
+                            repository.updateTransaction(action.originalRecurringItem)
+                        }
+                        val title = action.originalRecurringItem.note?.takeIf { it.isNotBlank() } ?: action.originalRecurringItem.type
+                        _eventFlow.emit(DashboardEvent.TransactionUndone("Undid payment for $title"))
+                    }
+                    is UndoableAction.PlannedPayoutPaid -> {
+                        repository.unmarkPlannedPayoutPaid(action.payout, action.transaction.id)
+                        _eventFlow.emit(DashboardEvent.TransactionUndone("Undid payout for: ${action.payout.title}"))
+                    }
+                }
+                _lastUndoableAction.value = null
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to undo transaction"))
+            }
+        }
+    }
+
+    private val _celebrationEvent = kotlinx.coroutines.flow.MutableStateFlow<TransactionCelebrationData?>(null)
+    val celebrationEvent: StateFlow<TransactionCelebrationData?> = _celebrationEvent.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = null
+    )
+
+    fun triggerTransactionCelebration(
+        amount: Double,
+        type: TransactionType,
+        currencyCode: String,
+        note: String? = null
+    ) {
+        _celebrationEvent.value = TransactionCelebrationData(
+            amount = amount,
+            type = type,
+            currencyCode = currencyCode,
+            note = note,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    fun dismissCelebration() {
+        _celebrationEvent.value = null
+    }
+
     val cloudBackupStatus: StateFlow<CloudBackupStatus> = cloudBackupManager.status
+
+    init {
+        viewModelScope.launch {
+            try {
+                repository.deleteOrphanedPlannedTransactions()
+                repository.reconcileAccountBalancesSafely()
+            } catch (_: Exception) {
+            }
+        }
+
+        appContext?.let { ctx ->
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                combine(
+                    repository.allAccounts,
+                    repository.allTransactions,
+                    repository.allBudgets,
+                    preferencesRepository.baseCurrency,
+                    repository.allExchangeRates
+                ) { _, _, _, _, _ -> Unit }
+                    .collectLatest {
+                        try {
+                            FinanceAppWidgetManager.updateAllWidgets(ctx)
+                        } catch (_: Exception) {
+                        }
+                    }
+            }
+        }
+    }
 
     val baseCurrency: StateFlow<String> = preferencesRepository.baseCurrency
         .stateIn(
@@ -176,6 +324,52 @@ class DashboardViewModel(
             preferencesRepository.setHeroBackgroundStyle(style)
         }
     }
+
+    val appThemePreset: StateFlow<AppThemePreset> = preferencesRepository.appThemePreset
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = AppThemePreset.EMERALD_AURORA
+        )
+
+    fun setAppThemePreset(preset: AppThemePreset, syncHeroStyle: Boolean = true) {
+        viewModelScope.launch {
+            preferencesRepository.setAppThemePreset(preset)
+            if (syncHeroStyle) {
+                preferencesRepository.setHeroBackgroundStyle(preset.defaultHeroStyle)
+            }
+        }
+    }
+
+    // --- Planned Payouts State Streams ---
+    val allPlannedPayouts: StateFlow<List<PlannedPayoutEntity>> = repository.allPlannedPayouts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    val pendingPlannedPayouts: StateFlow<List<PlannedPayoutEntity>> = repository.pendingPlannedPayouts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    val paidPlannedPayouts: StateFlow<List<PlannedPayoutEntity>> = repository.paidPlannedPayouts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    val totalPendingPayoutsAmount: StateFlow<Double> = repository.totalPendingPayoutsAmount
+        .map { it ?: 0.0 }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = 0.0
+        )
 
     // Phase 8: Data Streams for Budgets, Categories, Subscriptions, and Master Ledger
     val allCategories: StateFlow<List<CategoryEntity>> = repository.allCategories
@@ -234,6 +428,13 @@ class DashboardViewModel(
             initialValue = emptyList()
         )
 
+    val allDebts: StateFlow<List<com.example.data.local.entity.DebtEntity>> = repository.allDebts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
     val includeAssetsInHero: StateFlow<Boolean> = preferencesRepository.includeAssetsInHero
         .stateIn(
             scope = viewModelScope,
@@ -282,7 +483,10 @@ class DashboardViewModel(
         val transactions = args[5] as List<TransactionEntity>
         val isHidden = args[6] as Boolean
 
-        val convertedCashBalance = accounts.sumOf { acc ->
+        val tallyAccounts = accounts.filter { it.includeInTally }
+        val excludedCount = accounts.size - tallyAccounts.size
+
+        val convertedCashBalance = tallyAccounts.sumOf { acc ->
             CurrencyUtils.convert(
                 amount = acc.currentBalance,
                 fromCurrency = acc.currencyCode,
@@ -311,6 +515,8 @@ class DashboardViewModel(
             baseCurrency = baseCurr,
             exchangeRates = rates,
             accounts = accounts,
+            tallyAccountsCount = tallyAccounts.size,
+            excludedAccountsCount = excludedCount,
             recentTransactions = transactions.take(20),
             isLoading = false
         )
@@ -406,7 +612,8 @@ class DashboardViewModel(
             var spendable = 0.0
             var locked = 0.0
             val now = Date()
-            for (acc in accounts) {
+            val tallyAccounts = accounts.filter { it.includeInTally }
+            for (acc in tallyAccounts) {
                 val isCurrentlyLocked = acc.isLocked || 
                     (acc.lockedUntil != null && acc.lockedUntil.after(now)) ||
                     acc.type.equals(AccountType.INVESTMENT.displayName, ignoreCase = true)
@@ -668,7 +875,10 @@ class DashboardViewModel(
         currencyCode: String = "USD",
         isLocked: Boolean = false,
         lockedUntil: Date? = null,
-        linkedAppPackage: String? = null
+        linkedAppPackage: String? = null,
+        includeInTally: Boolean = true,
+        parentAccountId: Long? = null,
+        subAccountType: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -683,10 +893,14 @@ class DashboardViewModel(
                     currencyCode = currencyCode.uppercase().trim(),
                     isLocked = isLocked,
                     lockedUntil = lockedUntil,
-                    linkedAppPackage = linkedAppPackage
+                    linkedAppPackage = linkedAppPackage,
+                    includeInTally = includeInTally,
+                    parentAccountId = parentAccountId,
+                    subAccountType = subAccountType
                 )
                 repository.insertAccount(account)
                 _eventFlow.emit(DashboardEvent.AccountCreated("Account '$name' created successfully"))
+                triggerWidgetRefresh()
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to create account"))
             }
@@ -698,8 +912,35 @@ class DashboardViewModel(
             try {
                 repository.updateAccount(account)
                 _eventFlow.emit(DashboardEvent.AccountCreated("Account '${account.name}' updated successfully"))
+                triggerWidgetRefresh()
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update account"))
+            }
+        }
+    }
+
+    fun adjustAccountBalance(accountId: Long, newBalance: Double) {
+        viewModelScope.launch {
+            try {
+                repository.adjustAccountBalance(accountId, newBalance)
+                _eventFlow.emit(DashboardEvent.AccountCreated("Account balance calibrated successfully"))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to adjust balance"))
+            }
+        }
+    }
+
+    fun toggleAccountTally(account: AccountEntity, include: Boolean) {
+        viewModelScope.launch {
+            try {
+                val updated = account.copy(includeInTally = include)
+                repository.updateAccount(updated)
+                val statusText = if (include) "included in" else "excluded from"
+                _eventFlow.emit(DashboardEvent.AccountCreated("${account.name} is now $statusText total tally"))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update tally setting"))
             }
         }
     }
@@ -709,6 +950,7 @@ class DashboardViewModel(
             try {
                 repository.deleteAccount(account)
                 _eventFlow.emit(DashboardEvent.AccountCreated("Account '${account.name}' deleted"))
+                triggerWidgetRefresh()
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to delete account"))
             }
@@ -724,23 +966,50 @@ class DashboardViewModel(
         toAccountId: Long? = null,
         categoryId: Long? = null,
         labels: List<String> = emptyList(),
-        note: String? = null
+        note: String? = null,
+        proofImageUri: String? = null
     ) {
         viewModelScope.launch {
             try {
-                repository.addQuickTransaction(
+                val txId = repository.addQuickTransaction(
                     amount = amount,
                     type = type,
                     accountId = accountId,
                     toAccountId = toAccountId,
                     categoryId = categoryId,
                     labels = labels,
-                    note = note
+                    note = note,
+                    proofImageUri = proofImageUri
                 )
+                val createdTx = repository.getTransactionByIdImmediate(txId) ?: TransactionEntity(
+                    id = txId,
+                    amount = amount,
+                    type = type.displayName,
+                    date = Date(),
+                    status = TransactionStatus.CLEARED.displayName,
+                    accountId = accountId,
+                    toAccountId = toAccountId,
+                    categoryId = categoryId,
+                    labels = labels,
+                    note = note,
+                    recurrenceRule = RecurrenceRule.NONE.displayName,
+                    proofImageUri = proofImageUri
+                )
+                _lastUndoableAction.value = UndoableAction.Created(createdTx)
+
                 val account = allAccounts.value.find { it.id == accountId }
                 val currCode = account?.currencyCode ?: preferencesRepository.baseCurrency.first()
+                triggerTransactionCelebration(
+                    amount = amount,
+                    type = type,
+                    currencyCode = currCode,
+                    note = note ?: type.displayName
+                )
                 _eventFlow.emit(
-                    DashboardEvent.TransactionLogged("${type.displayName} of ${CurrencyUtils.formatCurrency(amount, currCode)} logged successfully")
+                    DashboardEvent.TransactionLogged(
+                        message = "${type.displayName} of ${CurrencyUtils.formatCurrency(amount, currCode)} logged successfully",
+                        canUndo = true
+                    )
                 )
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to log transaction"))
@@ -755,12 +1024,13 @@ class DashboardViewModel(
         type: DebtType,
         amount: Double,
         dueDate: Date? = null,
-        notes: String? = null
+        notes: String? = null,
+        accountId: Long? = null
     ) {
         viewModelScope.launch {
             try {
                 val debt = DebtEntity(
-                    personName = personName,
+                    personName = personName.trim(),
                     type = type.displayName,
                     totalAmount = amount,
                     remainingAmount = amount,
@@ -768,6 +1038,20 @@ class DashboardViewModel(
                     notes = notes
                 )
                 repository.insertDebt(debt)
+
+                if (accountId != null && amount > 0.0001) {
+                    val isLent = type == DebtType.LENT
+                    val txType = if (isLent) TransactionType.EXPENSE else TransactionType.INCOME
+                    val note = if (isLent) "Lent money to ${personName.trim()}" else "Borrowed funds from ${personName.trim()}"
+                    repository.addQuickTransaction(
+                        amount = amount,
+                        type = txType,
+                        accountId = accountId,
+                        labels = listOf("Debt Created", if (isLent) "Lent" else "Borrowed", personName.trim()),
+                        note = note
+                    )
+                }
+
                 _eventFlow.emit(DashboardEvent.DebtUpdated("Recorded debt for $personName"))
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to add debt"))
@@ -806,23 +1090,23 @@ class DashboardViewModel(
         }
     }
 
-    fun settleDebt(debtId: Long) {
+    fun settleDebt(debtId: Long, accountId: Long? = null) {
         viewModelScope.launch {
             try {
-                repository.settleDebt(debtId)
-                _eventFlow.emit(DashboardEvent.DebtUpdated("Debt marked as settled"))
+                repository.settleDebt(debtId, accountId)
+                _eventFlow.emit(DashboardEvent.DebtUpdated("Debt marked as settled & balance updated"))
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to settle debt"))
             }
         }
     }
 
-    fun payDebtPortion(debtId: Long, paymentAmount: Double) {
+    fun payDebtPortion(debtId: Long, paymentAmount: Double, accountId: Long? = null) {
         viewModelScope.launch {
             try {
-                repository.payDebtPortion(debtId, paymentAmount)
+                repository.payDebtPortion(debtId, paymentAmount, accountId)
                 val currCode = preferencesRepository.baseCurrency.first()
-                _eventFlow.emit(DashboardEvent.DebtUpdated("Payment of ${CurrencyUtils.formatCurrency(paymentAmount, currCode)} applied"))
+                _eventFlow.emit(DashboardEvent.DebtUpdated("Payment of ${CurrencyUtils.formatCurrency(paymentAmount, currCode)} applied to account"))
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to apply payment"))
             }
@@ -891,6 +1175,86 @@ class DashboardViewModel(
                 _eventFlow.emit(DashboardEvent.ProjectUpdated("Milestone marked as paid & income logged"))
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to mark milestone as paid"))
+            }
+        }
+    }
+
+    fun updateFreelanceProject(project: FreelanceProjectEntity) {
+        viewModelScope.launch {
+            try {
+                repository.updateProject(project)
+                _eventFlow.emit(DashboardEvent.ProjectUpdated("Project '${project.projectName}' updated"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update project"))
+            }
+        }
+    }
+
+    fun updateFreelanceProject(
+        projectId: Long,
+        projectName: String,
+        client: String,
+        totalExpectedFee: Double,
+        status: String = "Active"
+    ) {
+        viewModelScope.launch {
+            try {
+                val existing = freelanceProjects.value.find { it.project.id == projectId }?.project
+                val updated = existing?.copy(
+                    projectName = projectName,
+                    client = client,
+                    totalExpectedFee = totalExpectedFee,
+                    status = status
+                ) ?: FreelanceProjectEntity(
+                    id = projectId,
+                    projectName = projectName,
+                    client = client,
+                    totalExpectedFee = totalExpectedFee,
+                    status = status
+                )
+                repository.updateProject(updated)
+                _eventFlow.emit(DashboardEvent.ProjectUpdated("Project '$projectName' updated"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update project"))
+            }
+        }
+    }
+
+    fun updateMilestone(milestone: MilestoneEntity) {
+        viewModelScope.launch {
+            try {
+                repository.updateMilestone(milestone)
+                _eventFlow.emit(DashboardEvent.ProjectUpdated("Milestone '${milestone.title}' updated"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update milestone"))
+            }
+        }
+    }
+
+    fun updateMilestone(
+        milestoneId: Long,
+        projectId: Long,
+        title: String,
+        amount: Double,
+        expectedDate: Date,
+        status: String = "Pending",
+        paidAt: Date? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val milestone = MilestoneEntity(
+                    id = milestoneId,
+                    projectId = projectId,
+                    title = title,
+                    amount = amount,
+                    expectedDate = expectedDate,
+                    status = status,
+                    paidAt = paidAt
+                )
+                repository.updateMilestone(milestone)
+                _eventFlow.emit(DashboardEvent.ProjectUpdated("Milestone '$title' updated"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update milestone"))
             }
         }
     }
@@ -979,6 +1343,11 @@ class DashboardViewModel(
                     CategoryEntity(name = "Healthcare", iconResId = "ic_health", type = "Expense", color = -16728876),
                     CategoryEntity(name = "Shopping", iconResId = "ic_shopping", type = "Expense", color = -16744193),
                     CategoryEntity(name = "Education", iconResId = "ic_education", type = "Expense", color = -10597711),
+                    CategoryEntity(name = "Motortaxi", iconResId = "ic_motortaxi", type = "Expense", color = -14579213),
+                    CategoryEntity(name = "Jollibee", iconResId = "ic_food", type = "Expense", color = -13447886),
+                    CategoryEntity(name = "McDo", iconResId = "ic_food", type = "Expense", color = -26624),
+                    CategoryEntity(name = "Tech", iconResId = "ic_tech", type = "Expense", color = -16738120),
+                    CategoryEntity(name = "Electronics", iconResId = "ic_electronics", type = "Expense", color = -11751600),
                     CategoryEntity(name = "Salary", iconResId = "ic_salary", type = "Income", color = -11751600),
                     CategoryEntity(name = "Freelance", iconResId = "ic_freelance", type = "Income", color = -16738120),
                     CategoryEntity(name = "Investments", iconResId = "ic_investment", type = "Income", color = -12627531),
@@ -1034,10 +1403,23 @@ class DashboardViewModel(
     fun stopSubscription(transactionId: Long) {
         viewModelScope.launch {
             try {
-                repository.stopRecurrence(transactionId)
-                _eventFlow.emit(DashboardEvent.SubscriptionUpdated("Subscription recurrence stopped"))
+                repository.deleteTransactionById(transactionId)
+                repository.deleteOrphanedPlannedTransactions()
+                _eventFlow.emit(DashboardEvent.SubscriptionUpdated("Recurring schedule removed"))
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to stop subscription"))
+            }
+        }
+    }
+
+    fun deleteSubscription(transaction: TransactionEntity) {
+        viewModelScope.launch {
+            try {
+                repository.deleteTransaction(transaction)
+                repository.deleteOrphanedPlannedTransactions()
+                _eventFlow.emit(DashboardEvent.SubscriptionUpdated("Recurring schedule '${transaction.note ?: transaction.type}' deleted"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to delete recurring schedule"))
             }
         }
     }
@@ -1072,6 +1454,28 @@ class DashboardViewModel(
         note: String? = null,
         labels: List<String> = emptyList()
     ) {
+        addRecurringItem(
+            amount = amount,
+            type = type,
+            accountId = accountId,
+            categoryId = categoryId,
+            recurrenceRule = recurrenceRule.displayName,
+            startDate = startDate,
+            note = note,
+            labels = labels
+        )
+    }
+
+    fun addRecurringItem(
+        amount: Double,
+        type: TransactionType,
+        accountId: Long,
+        categoryId: Long?,
+        recurrenceRule: String,
+        startDate: Date = Date(),
+        note: String? = null,
+        labels: List<String> = emptyList()
+    ) {
         viewModelScope.launch {
             try {
                 val tx = TransactionEntity(
@@ -1081,7 +1485,7 @@ class DashboardViewModel(
                     status = TransactionStatus.PLANNED.displayName,
                     accountId = accountId,
                     categoryId = categoryId,
-                    recurrenceRule = recurrenceRule.displayName,
+                    recurrenceRule = recurrenceRule,
                     labels = labels,
                     note = note
                 )
@@ -1105,37 +1509,128 @@ class DashboardViewModel(
     }
 
     fun markRecurringPaidOrReceived(recurringItem: TransactionEntity) {
+        receiveOrPayNextPayment(
+            recurringItem = recurringItem,
+            amount = recurringItem.amount,
+            accountId = recurringItem.accountId,
+            advanceCycle = true,
+            customNote = null
+        )
+    }
+
+    fun receiveOrPayNextPayment(
+        recurringItem: TransactionEntity,
+        amount: Double,
+        accountId: Long,
+        advanceCycle: Boolean = true,
+        customNote: String? = null
+    ) {
         viewModelScope.launch {
             try {
-                // Log a cleared payment transaction for today
-                val type = if (recurringItem.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)) {
-                    TransactionType.INCOME
-                } else {
-                    TransactionType.EXPENSE
+                val isIncome = recurringItem.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)
+                val type = if (isIncome) TransactionType.INCOME else TransactionType.EXPENSE
+                val itemTitle = recurringItem.note ?: recurringItem.type
+                val noteText = customNote?.ifBlank { null } ?: "$itemTitle (${if (isIncome) "Received" else "Paid"})"
+
+                // 1. Log cleared transaction
+                val txId = repository.addQuickTransaction(
+                    amount = amount,
+                    type = type,
+                    accountId = accountId,
+                    categoryId = recurringItem.categoryId,
+                    labels = recurringItem.labels + listOf("recurring_cleared", if (isIncome) "inflow" else "outflow"),
+                    note = noteText
+                )
+
+                val loggedTx = repository.getTransactionByIdImmediate(txId) ?: TransactionEntity(
+                    id = txId,
+                    amount = amount,
+                    type = type.displayName,
+                    date = Date(),
+                    status = TransactionStatus.CLEARED.displayName,
+                    accountId = accountId,
+                    categoryId = recurringItem.categoryId,
+                    labels = recurringItem.labels + listOf("recurring_cleared", if (isIncome) "inflow" else "outflow"),
+                    note = noteText,
+                    recurrenceRule = RecurrenceRule.NONE.displayName
+                )
+
+                val willAdvance = advanceCycle && !recurringItem.recurrenceRule.equals("None", ignoreCase = true)
+
+                // 2. Advance recurring schedule if requested
+                if (willAdvance) {
+                    val nextDate = com.example.util.RecurrenceHelper.calculateNextOccurrenceStrictlyAfter(
+                        afterDate = recurringItem.date,
+                        startDate = recurringItem.date,
+                        rule = recurringItem.recurrenceRule
+                    )
+                    val updatedRecurring = recurringItem.copy(date = nextDate)
+                    repository.updateTransaction(updatedRecurring)
                 }
 
-                repository.addQuickTransaction(
-                    amount = recurringItem.amount,
-                    type = type,
-                    accountId = recurringItem.accountId,
-                    categoryId = recurringItem.categoryId,
-                    labels = recurringItem.labels + "recurring_cleared",
-                    note = "${recurringItem.note ?: recurringItem.type} (Paid/Settled)"
+                _lastUndoableAction.value = UndoableAction.RecurringReceivedOrPaid(
+                    loggedTransaction = loggedTx,
+                    originalRecurringItem = recurringItem,
+                    advancedCycle = willAdvance
                 )
-                _eventFlow.emit(DashboardEvent.TransactionLogged("Logged cleared payment for ${recurringItem.note ?: "recurring item"}"))
+
+                // 3. Trigger lively Income/Expense celebratory animation
+                val account = allAccounts.value.find { it.id == accountId }
+                val currCode = account?.currencyCode ?: preferencesRepository.baseCurrency.first()
+                triggerTransactionCelebration(
+                    amount = amount,
+                    type = type,
+                    currencyCode = currCode,
+                    note = noteText
+                )
+
+                val actionName = if (isIncome) "Received" else "Paid"
+                _eventFlow.emit(
+                    DashboardEvent.TransactionLogged(
+                        message = "$actionName ${CurrencyUtils.formatCurrency(amount, currCode)} for $itemTitle",
+                        canUndo = true
+                    )
+                )
             } catch (e: Exception) {
-                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to log payment"))
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to record payment"))
             }
         }
     }
 
     // --- Actions: Master Records Ledger ---
 
+    fun updateTransaction(newTransaction: TransactionEntity, originalTransaction: TransactionEntity? = null) {
+        viewModelScope.launch {
+            try {
+                repository.updateClearedTransaction(newTransaction, originalTransaction)
+                if (originalTransaction != null) {
+                    _lastUndoableAction.value = UndoableAction.Updated(originalTransaction, newTransaction)
+                }
+                _eventFlow.emit(
+                    DashboardEvent.TransactionLogged(
+                        message = "Transaction updated successfully",
+                        canUndo = originalTransaction != null
+                    )
+                )
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to update transaction"))
+            }
+        }
+    }
+
     fun deleteTransaction(transaction: TransactionEntity) {
         viewModelScope.launch {
             try {
                 repository.deleteTransaction(transaction)
-                _eventFlow.emit(DashboardEvent.TransactionLogged("Transaction deleted"))
+                _lastUndoableAction.value = UndoableAction.Deleted(transaction)
+                val title = transaction.note?.takeIf { it.isNotBlank() } ?: transaction.type
+                val currCode = preferencesRepository.baseCurrency.first()
+                _eventFlow.emit(
+                    DashboardEvent.TransactionLogged(
+                        message = "Deleted '$title' (${CurrencyUtils.formatCurrency(transaction.amount, currCode)})",
+                        canUndo = true
+                    )
+                )
             } catch (e: Exception) {
                 _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to delete transaction"))
             }
@@ -1456,6 +1951,99 @@ class DashboardViewModel(
         }
     }
 
+    // --- Planned Payouts (Scheduled One-Off Commitments) ---
+    fun addPlannedPayout(
+        title: String,
+        amount: Double,
+        currencyCode: String = "PHP",
+        dueDate: Date,
+        targetAccountId: Long? = null,
+        categoryId: Long? = null,
+        payeeOrVendor: String? = null,
+        notes: String? = null,
+        priority: String = "NORMAL"
+    ) {
+        viewModelScope.launch {
+            try {
+                val payout = PlannedPayoutEntity(
+                    title = title,
+                    amount = amount,
+                    currencyCode = currencyCode,
+                    dueDate = dueDate,
+                    targetAccountId = targetAccountId,
+                    categoryId = categoryId,
+                    payeeOrVendor = payeeOrVendor,
+                    notes = notes,
+                    priority = priority,
+                    status = "PENDING"
+                )
+                repository.insertPlannedPayout(payout)
+                _eventFlow.emit(DashboardEvent.PlannedPayoutUpdated("Planned payout scheduled: $title"))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to schedule planned payout: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun updatePlannedPayout(payout: PlannedPayoutEntity) {
+        viewModelScope.launch {
+            try {
+                repository.updatePlannedPayout(payout)
+                _eventFlow.emit(DashboardEvent.PlannedPayoutUpdated("Updated payout: ${payout.title}"))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to update payout: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun deletePlannedPayout(payout: PlannedPayoutEntity) {
+        viewModelScope.launch {
+            try {
+                repository.deletePlannedPayout(payout)
+                _eventFlow.emit(DashboardEvent.PlannedPayoutUpdated("Removed planned payout: ${payout.title}"))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to remove payout: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun markPlannedPayoutAsPaid(
+        payout: PlannedPayoutEntity,
+        accountId: Long,
+        note: String? = null,
+        actualAmount: Double? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val result = repository.markPlannedPayoutAsPaid(
+                    payoutId = payout.id,
+                    accountId = accountId,
+                    note = note,
+                    actualAmount = actualAmount
+                )
+                if (result != null) {
+                    val (updatedPayout, insertedTx) = result
+                    _lastUndoableAction.value = UndoableAction.PlannedPayoutPaid(
+                        payout = payout,
+                        transaction = insertedTx
+                    )
+                    _eventFlow.emit(
+                        DashboardEvent.TransactionLogged(
+                            message = "Paid ${payout.title} (${CurrencyUtils.formatCurrency(insertedTx.amount, payout.currencyCode)})",
+                            canUndo = true
+                        )
+                    )
+                    triggerWidgetRefresh()
+                }
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to process payout: ${e.localizedMessage}"))
+            }
+        }
+    }
+
     companion object {
         fun provideFactory(context: Context): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
@@ -1471,7 +2059,8 @@ class DashboardViewModel(
                         freelanceDao = db.freelanceDao(),
                         exchangeRateDao = db.exchangeRateDao(),
                         receiptDao = db.receiptDao(),
-                        assetDao = db.assetDao()
+                        assetDao = db.assetDao(),
+                        plannedPayoutDao = db.plannedPayoutDao()
                     )
                     val preferencesRepository = UserPreferencesRepository(context.applicationContext)
                     val dataSyncManager = DataSyncManager(db)
@@ -1480,7 +2069,8 @@ class DashboardViewModel(
                         repository = repository,
                         preferencesRepository = preferencesRepository,
                         dataSyncManager = dataSyncManager,
-                        cloudBackupManager = cloudBackupManager
+                        cloudBackupManager = cloudBackupManager,
+                        appContext = context.applicationContext
                     ) as T
                 }
             }

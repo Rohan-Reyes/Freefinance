@@ -223,7 +223,7 @@ fun HomeScreenWidgetsScreen(
                 WidgetPreviewItemCard(
                     title = "Net Worth & Quick Balance",
                     gridSize = "3 × 2 Size",
-                    description = "Displays unified multi-currency total net worth, active cash modes, and instant shortcut to log new entries.",
+                    description = "Displays unified multi-currency total net worth, active accounts and sub-accounts, and instant shortcut to log new entries.",
                     icon = Icons.Default.TouchApp,
                     accentColor = Color(0xFF448AFF),
                     onPinClick = {

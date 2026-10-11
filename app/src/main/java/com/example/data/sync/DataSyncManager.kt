@@ -120,6 +120,16 @@ class DataSyncManager(private val database: AppDatabase) {
                 put("compoundingFrequency", acc.compoundingFrequency.name)
                 put("currencyCode", acc.currencyCode)
                 put("isLocked", acc.isLocked)
+                put("includeInTally", acc.includeInTally)
+                if (acc.parentAccountId != null) {
+                    put("parentAccountId", acc.parentAccountId)
+                }
+                if (acc.subAccountType != null) {
+                    put("subAccountType", acc.subAccountType)
+                }
+                if (acc.linkedAppPackage != null) {
+                    put("linkedAppPackage", acc.linkedAppPackage)
+                }
                 if (acc.lockedUntil != null) {
                     put("lockedUntil", isoDateFormat.format(acc.lockedUntil))
                 }
@@ -145,6 +155,7 @@ class DataSyncManager(private val database: AppDatabase) {
                 tx.labels.forEach { labelsArr.put(it) }
                 put("labels", labelsArr)
                 if (tx.note != null) put("note", tx.note)
+                if (tx.proofImageUri != null) put("proofImageUri", tx.proofImageUri)
             }
             txArray.put(obj)
         }
@@ -279,6 +290,12 @@ class DataSyncManager(private val database: AppDatabase) {
                     }
                     val isLocked = obj.optBoolean("isLocked", false) || obj.has("lockedUntil")
                     val lockedUntilDate = parseNullableDate(obj.opt("lockedUntil"))
+                    val includeInTally = obj.optBoolean("includeInTally", true)
+                    val linkedAppPackage = obj.optString("linkedAppPackage").takeIf { it.isNotBlank() }
+                    val parentAccountId = if (obj.has("parentAccountId") && !obj.isNull("parentAccountId")) {
+                        obj.getLong("parentAccountId")
+                    } else null
+                    val subAccountType = obj.optString("subAccountType").takeIf { it.isNotBlank() }
                     accounts.add(
                         AccountEntity(
                             id = obj.optLong("id", 0),
@@ -291,7 +308,11 @@ class DataSyncManager(private val database: AppDatabase) {
                             compoundingFrequency = compFreq,
                             currencyCode = obj.optString("currencyCode", "USD").uppercase(),
                             isLocked = isLocked,
-                            lockedUntil = lockedUntilDate
+                            lockedUntil = lockedUntilDate,
+                            linkedAppPackage = linkedAppPackage,
+                            includeInTally = includeInTally,
+                            parentAccountId = parentAccountId,
+                            subAccountType = subAccountType
                         )
                     )
                 } catch (e: Exception) {
@@ -326,7 +347,8 @@ class DataSyncManager(private val database: AppDatabase) {
                             status = obj.optString("status", "Cleared"),
                             recurrenceRule = obj.optString("recurrenceRule", "None"),
                             labels = labelsList,
-                            note = if (obj.has("note") && !obj.isNull("note")) obj.getString("note") else null
+                            note = if (obj.has("note") && !obj.isNull("note")) obj.getString("note") else null,
+                            proofImageUri = if (obj.has("proofImageUri") && !obj.isNull("proofImageUri")) obj.getString("proofImageUri") else null
                         )
                     )
                 } catch (e: Exception) {

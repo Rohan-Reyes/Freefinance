@@ -37,6 +37,71 @@ interface AccountDao {
     @Query("UPDATE accounts SET current_balance = :newBalance WHERE id = :accountId")
     suspend fun updateCurrentBalance(accountId: Long, newBalance: Double)
 
+    @Query("SELECT * FROM accounts")
+    suspend fun getAllAccountsImmediate(): List<AccountEntity>
+
+    /**
+     * Calculates the sum of cleared transactions (Income +, Expense -, Transfer in +, Transfer out -)
+     * for a given account.
+     */
+    @Query("""
+        SELECT COALESCE(SUM(
+            CASE 
+                WHEN UPPER(t.type) = 'INCOME' THEN t.amount
+                WHEN UPPER(t.type) = 'EXPENSE' THEN -t.amount
+                WHEN UPPER(t.type) = 'TRANSFER' AND t.to_account_id = :accountId THEN t.amount
+                WHEN UPPER(t.type) = 'TRANSFER' AND t.account_id = :accountId THEN -t.amount
+                ELSE 0.0 
+            END
+        ), 0.0)
+        FROM transactions t 
+        WHERE (t.account_id = :accountId OR t.to_account_id = :accountId) 
+          AND UPPER(t.status) = 'CLEARED'
+    """)
+    suspend fun getClearedTransactionSumForAccount(accountId: Long): Double
+
+    /**
+     * Recalculates and updates the current_balance column atomically from the initial_balance
+     * plus all Cleared transactions (Income, Expense, Transfer) in the ledger.
+     */
+    @Query("""
+        UPDATE accounts 
+        SET current_balance = initial_balance + COALESCE(
+            (SELECT SUM(
+                CASE 
+                    WHEN UPPER(t.type) = 'INCOME' THEN t.amount
+                    WHEN UPPER(t.type) = 'EXPENSE' THEN -t.amount
+                    WHEN UPPER(t.type) = 'TRANSFER' AND t.to_account_id = accounts.id THEN t.amount
+                    WHEN UPPER(t.type) = 'TRANSFER' AND t.account_id = accounts.id THEN -t.amount
+                    ELSE 0.0 
+                END
+            ) FROM transactions t WHERE (t.account_id = accounts.id OR t.to_account_id = accounts.id) AND UPPER(t.status) = 'CLEARED'),
+            0.0
+        )
+        WHERE id = :accountId
+    """)
+    suspend fun recalculateAccountBalance(accountId: Long)
+
+    /**
+     * Recalculates and synchronizes current_balance across all accounts in the database.
+     */
+    @Query("""
+        UPDATE accounts 
+        SET current_balance = initial_balance + COALESCE(
+            (SELECT SUM(
+                CASE 
+                    WHEN UPPER(t.type) = 'INCOME' THEN t.amount
+                    WHEN UPPER(t.type) = 'EXPENSE' THEN -t.amount
+                    WHEN UPPER(t.type) = 'TRANSFER' AND t.to_account_id = accounts.id THEN t.amount
+                    WHEN UPPER(t.type) = 'TRANSFER' AND t.account_id = accounts.id THEN -t.amount
+                    ELSE 0.0 
+                END
+            ) FROM transactions t WHERE (t.account_id = accounts.id OR t.to_account_id = accounts.id) AND UPPER(t.status) = 'CLEARED'),
+            0.0
+        )
+    """)
+    suspend fun recalculateAllAccountBalances()
+
     /**
      * Requirement (a): Get cleared balance vs planned future balance per account.
      * Computes cleared balance (initial + cleared transactions) and projected balance (including planned).

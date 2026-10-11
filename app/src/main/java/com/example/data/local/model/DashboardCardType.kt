@@ -67,6 +67,11 @@ enum class DashboardCardType(
         title = "Monthly Spending Trends",
         description = "Interactive 6-month multi-bar and trajectory chart comparing monthly expenses & income",
         defaultEnabled = true
+    ),
+    PLANNED_PAYOUTS(
+        title = "Planned Payouts",
+        description = "Upcoming scheduled one-off disbursements and commitments",
+        defaultEnabled = true
     );
 
     companion object {

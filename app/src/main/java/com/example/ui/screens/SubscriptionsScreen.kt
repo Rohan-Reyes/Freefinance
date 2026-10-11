@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -51,6 +54,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,6 +65,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,7 +87,9 @@ import com.example.data.local.model.RecurrenceRule
 import com.example.data.local.model.TransactionType
 import com.example.ui.components.EmptyListPlaceholder
 import com.example.util.CurrencyUtils
+import com.example.viewmodels.DashboardEvent
 import com.example.viewmodels.DashboardViewModel
+import kotlinx.coroutines.flow.collectLatest
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -103,12 +113,45 @@ fun SubscriptionsScreen(
     val categories by viewModel.allCategories.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val baseCurrency = uiState.baseCurrency
+    val canUndo by viewModel.canUndo.collectAsState()
 
     var showAddSubscriptionSheet by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<TransactionEntity?>(null) }
     var selectedFilter by remember { mutableStateOf(RecurringFilterType.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var itemToStop by remember { mutableStateOf<TransactionEntity?>(null) }
+    var itemToReceiveOrPay by remember { mutableStateOf<TransactionEntity?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.eventFlow.collectLatest { event ->
+            when (event) {
+                is DashboardEvent.TransactionLogged -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = if (event.canUndo) "UNDO" else null,
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.undoLastTransaction()
+                    }
+                }
+                is DashboardEvent.TransactionUndone -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is DashboardEvent.SubscriptionUpdated -> {
+                    snackbarHostState.showSnackbar(event.message, duration = SnackbarDuration.Short)
+                }
+                is DashboardEvent.Error -> {
+                    snackbarHostState.showSnackbar(event.error, duration = SnackbarDuration.Short)
+                }
+                else -> {}
+            }
+        }
+    }
 
     // Split Outflows and Inflows
     val expenseSubscriptions = remember(subscriptions) {
@@ -120,10 +163,10 @@ fun SubscriptionsScreen(
 
     // Monthly commitments
     val monthlyBurn = remember(expenseSubscriptions) {
-        expenseSubscriptions.sumOf { calculateMonthlyEquivalent(it.amount, it.recurrenceRule) }
+        expenseSubscriptions.sumOf { tx: TransactionEntity -> com.example.util.RecurrenceHelper.calculateMonthlyRunRate(tx.amount, tx.recurrenceRule) }
     }
     val monthlyInflow = remember(incomeSubscriptions) {
-        incomeSubscriptions.sumOf { calculateMonthlyEquivalent(it.amount, it.recurrenceRule) }
+        incomeSubscriptions.sumOf { tx: TransactionEntity -> com.example.util.RecurrenceHelper.calculateMonthlyRunRate(tx.amount, tx.recurrenceRule) }
     }
     val netMonthly = monthlyInflow - monthlyBurn
 
@@ -142,18 +185,19 @@ fun SubscriptionsScreen(
                         (item.recurrenceRule.lowercase(Locale.getDefault()).contains(query))
             }
             matchesFilter && matchesQuery
-        }.sortedBy { calculateNextDueDate(it.date, it.recurrenceRule).time }
+        }.sortedBy { com.example.util.RecurrenceHelper.calculateNextDueDate(it.date, it.recurrenceRule).time }
     }
 
     // Soonest upcoming item
     val nextUpcoming = remember(subscriptions) {
         subscriptions
-            .map { it to calculateNextDueDate(it.date, it.recurrenceRule) }
+            .map { it to com.example.util.RecurrenceHelper.calculateNextDueDate(it.date, it.recurrenceRule) }
             .minByOrNull { it.second.time }
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -176,6 +220,19 @@ fun SubscriptionsScreen(
                     }
                 },
                 actions = {
+                    if (canUndo) {
+                        IconButton(
+                            onClick = { viewModel.undoLastTransaction() },
+                            modifier = Modifier.testTag("subscriptions_undo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo Transaction",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = { showAddSubscriptionSheet = true },
                         modifier = Modifier.testTag("add_subscription_top_button")
@@ -316,7 +373,7 @@ fun SubscriptionsScreen(
                         account = account,
                         category = category,
                         onMarkPaid = {
-                            viewModel.markRecurringPaidOrReceived(subscription)
+                            itemToReceiveOrPay = subscription
                         },
                         onEdit = {
                             editingItem = subscription
@@ -334,27 +391,47 @@ fun SubscriptionsScreen(
         }
     }
 
-    // Stop / Cancel Confirmation Dialog
+    // Receive / Pay Next Payment Dialog
+    itemToReceiveOrPay?.let { item ->
+        ReceiveOrPayNextPaymentDialog(
+            recurringItem = item,
+            accounts = accounts,
+            currencyCode = baseCurrency,
+            onDismiss = { itemToReceiveOrPay = null },
+            onConfirm = { actualAmount, accountId, advanceCycle, customNote ->
+                viewModel.receiveOrPayNextPayment(
+                    recurringItem = item,
+                    amount = actualAmount,
+                    accountId = accountId,
+                    advanceCycle = advanceCycle,
+                    customNote = customNote
+                )
+                itemToReceiveOrPay = null
+            }
+        )
+    }
+
+    // Delete / Cancel Confirmation Dialog
     itemToStop?.let { item ->
         AlertDialog(
             onDismissRequest = { itemToStop = null },
             icon = {
                 Icon(
-                    imageVector = Icons.Default.WarningAmber,
+                    imageVector = Icons.Default.Delete,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("Stop Recurring Schedule?") },
+            title = { Text("Delete Recurring Schedule?") },
             text = {
                 Text(
-                    "Are you sure you want to cancel the recurring schedule for '${item.note ?: item.type}'? It will no longer automatically project future cash-flow."
+                    "Are you sure you want to delete '${item.note ?: item.type}'? This will completely remove this recurring schedule and all its projected entries from your cashflow and calendar."
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.stopSubscription(item.id)
+                        viewModel.deleteSubscription(item)
                         itemToStop = null
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -362,7 +439,7 @@ fun SubscriptionsScreen(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Stop Recurrence")
+                    Text("Delete Schedule")
                 }
             },
             dismissButton = {
@@ -410,7 +487,7 @@ fun SubscriptionsScreen(
                     type = type.displayName,
                     accountId = accountId,
                     categoryId = categoryId,
-                    recurrenceRule = recurrence.displayName,
+                    recurrenceRule = recurrence,
                     date = date,
                     note = note,
                     labels = labels
@@ -580,7 +657,7 @@ fun RecurringOverviewHeroCard(
             if (nextUpcoming != null) {
                 val item = nextUpcoming.first
                 val dueDate = nextUpcoming.second
-                val days = daysUntil(dueDate)
+                val days = com.example.util.RecurrenceHelper.daysUntil(dueDate)
                 val isIncome = item.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)
 
                 Surface(
@@ -650,12 +727,15 @@ fun RevampedSubscriptionCard(
 ) {
     val isIncome = subscription.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)
     val nextDueDate = remember(subscription.date, subscription.recurrenceRule) {
-        calculateNextDueDate(subscription.date, subscription.recurrenceRule)
+        com.example.util.RecurrenceHelper.calculateNextDueDate(subscription.date, subscription.recurrenceRule)
     }
     val daysUntilDue = remember(nextDueDate) {
-        daysUntil(nextDueDate)
+        com.example.util.RecurrenceHelper.daysUntil(nextDueDate)
     }
     val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
+    val formattedSchedule = remember(subscription.recurrenceRule, subscription.date) {
+        com.example.util.RecurrenceHelper.formatSchedule(subscription.recurrenceRule, subscription.date)
+    }
 
     // Derive avatar color and label
     val title = subscription.note ?: category?.name ?: if (isIncome) "Receivable" else "Subscription"
@@ -711,31 +791,27 @@ fun RevampedSubscriptionCard(
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                        }
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 2.dp)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                             ) {
                                 Text(
-                                    text = subscription.recurrenceRule,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    text = formattedSchedule,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -761,7 +837,7 @@ fun RevampedSubscriptionCard(
                         color = if (isIncome) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (isIncome) "Inflow" else "Outflow",
+                        text = if (isIncome) "Scheduled Inflow" else "Recurring Bill",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -787,7 +863,7 @@ fun RevampedSubscriptionCard(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Next: ${dateFormatter.format(nextDueDate)}",
+                        text = "Next Due: ${dateFormatter.format(nextDueDate)}",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
@@ -861,13 +937,13 @@ fun RevampedSubscriptionCard(
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CheckCircle,
+                        imageVector = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
                         contentDescription = null,
                         modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isIncome) "Mark Received" else "Mark as Paid",
+                        text = if (isIncome) "Receive Early / Next" else "Pay Early / Next",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -879,6 +955,7 @@ fun RevampedSubscriptionCard(
 
 /**
  * Revamped Modal Bottom Sheet for adding or editing recurring subscriptions and receivables.
+ * Includes advanced Cadence frequency (Weekdays, Custom days, Monthly specific day) and Custom Time of Day.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -893,7 +970,7 @@ fun RevampedAddSubscriptionBottomSheet(
         type: TransactionType,
         accountId: Long,
         categoryId: Long?,
-        recurrence: RecurrenceRule,
+        recurrence: String,
         startDate: Date,
         note: String,
         labels: List<String>
@@ -915,19 +992,84 @@ fun RevampedAddSubscriptionBottomSheet(
     var amountInput by remember { mutableStateOf(existingItem?.let { String.format(Locale.getDefault(), "%.2f", it.amount) } ?: "") }
     var selectedAccountId by remember { mutableStateOf(existingItem?.accountId ?: accounts.firstOrNull()?.id) }
     var selectedCategoryId by remember { mutableStateOf(existingItem?.categoryId ?: categories.firstOrNull()?.id) }
-    var selectedRecurrence by remember {
+
+    // Cadence category state
+    var cadenceCategory by remember {
         mutableStateOf(
-            existingItem?.recurrenceRule?.let { ruleStr ->
-                RecurrenceRule.entries.find { it.displayName.equals(ruleStr, ignoreCase = true) }
-            } ?: RecurrenceRule.MONTHLY
+            when {
+                existingItem == null -> "Monthly"
+                existingItem.recurrenceRule.startsWith("Weekdays", ignoreCase = true) -> "Weekdays"
+                existingItem.recurrenceRule.startsWith("Daily", ignoreCase = true) -> "Daily"
+                existingItem.recurrenceRule.startsWith("Weekends", ignoreCase = true) -> "Weekends"
+                existingItem.recurrenceRule.startsWith("Weekly", ignoreCase = true) -> "Weekly"
+                existingItem.recurrenceRule.startsWith("Custom", ignoreCase = true) -> "Custom Days"
+                existingItem.recurrenceRule.startsWith("Biweekly", ignoreCase = true) || existingItem.recurrenceRule.startsWith("Bi-Weekly", ignoreCase = true) -> "Bi-Weekly"
+                existingItem.recurrenceRule.startsWith("Yearly", ignoreCase = true) -> "Yearly"
+                else -> "Monthly"
+            }
         )
     }
+
+    // Weekly day selection (for Weekly cadence)
+    var selectedWeeklyDay by remember {
+        val rule = existingItem?.recurrenceRule ?: ""
+        val day = if (rule.contains(":")) rule.substringAfter(":").trim().uppercase(Locale.getDefault()) else "MON"
+        mutableStateOf(day.ifBlank { "MON" })
+    }
+
+    // Custom multi-day selection (for Custom Days cadence)
+    var selectedCustomDays by remember {
+        val rule = existingItem?.recurrenceRule ?: ""
+        val days = if (rule.startsWith("Custom:", ignoreCase = true)) {
+            rule.substringAfter(":").split(",").map { it.trim().uppercase(Locale.getDefault()) }.toSet()
+        } else {
+            setOf("MON", "WED", "FRI")
+        }
+        mutableStateOf(days)
+    }
+
+    // Monthly day selection
+    var selectedMonthlyDay by remember {
+        val rule = existingItem?.recurrenceRule ?: ""
+        val dayStr = if (rule.startsWith("Monthly:", ignoreCase = true)) {
+            rule.substringAfter(":")
+        } else {
+            val cal = Calendar.getInstance().apply { time = existingItem?.date ?: Date() }
+            cal.get(Calendar.DAY_OF_MONTH).toString()
+        }
+        mutableStateOf(dayStr.ifBlank { "1" })
+    }
+
+    // Time of Day state
+    val initialCal = Calendar.getInstance().apply { time = existingItem?.date ?: Date() }
+    var selectedHour by remember { mutableStateOf(initialCal.get(Calendar.HOUR_OF_DAY)) }
+    var selectedMinute by remember { mutableStateOf(initialCal.get(Calendar.MINUTE)) }
+    var isPm by remember { mutableStateOf(selectedHour >= 12) }
+    var hour12 by remember {
+        val h = selectedHour % 12
+        mutableStateOf(if (h == 0) 12 else h)
+    }
+
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val currencySymbol = CurrencyUtils.getSymbol(currencyCode)
 
     // Quick suggestion presets
-    val expensePresets = listOf("Google AI Pro", "YouTube Premium", "Netflix", "Spotify", "Rent & Utilities", "iCloud", "Gym")
-    val incomePresets = listOf("Jonrelle Retainer", "JV Receivable", "Allisa Monthly", "JB Retainer", "Salary", "Freelance Client")
+    val expensePresets = listOf("Allowance", "Google AI Pro", "YouTube Premium", "Netflix", "Spotify", "Rent & Utilities", "iCloud", "Gym")
+    val incomePresets = listOf("Daily Allowance", "Salary", "Jonrelle Retainer", "JV Receivable", "Allisa Monthly", "Freelance Client")
+
+    // Construct final recurrence string
+    val currentRecurrenceRule = remember(cadenceCategory, selectedWeeklyDay, selectedCustomDays, selectedMonthlyDay) {
+        when (cadenceCategory) {
+            "Weekdays" -> "Weekdays"
+            "Daily" -> "Daily"
+            "Weekends" -> "Weekends"
+            "Weekly" -> "Weekly:$selectedWeeklyDay"
+            "Custom Days" -> "Custom:${selectedCustomDays.sorted().joinToString(",")}"
+            "Bi-Weekly" -> "Biweekly"
+            "Yearly" -> "Yearly"
+            else -> "Monthly:$selectedMonthlyDay"
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -936,7 +1078,8 @@ fun RevampedAddSubscriptionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
@@ -1038,7 +1181,7 @@ fun RevampedAddSubscriptionBottomSheet(
                     errorMessage = null
                 },
                 label = { Text("Service / Plan / Person Name") },
-                placeholder = { Text(if (itemType == TransactionType.EXPENSE) "e.g. Google AI Pro, YT Premium, Rent" else "e.g. Jonrelle, Retainer Client") },
+                placeholder = { Text(if (itemType == TransactionType.EXPENSE) "e.g. Allowance, Google AI Pro, Rent" else "e.g. Daily Allowance, Salary, Retainer") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1052,32 +1195,263 @@ fun RevampedAddSubscriptionBottomSheet(
                 },
                 label = { Text("Recurring Amount") },
                 prefix = { Text("$currencySymbol ") },
-                placeholder = { Text("e.g. 1100.00") },
+                placeholder = { Text("e.g. 500.00") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 4. Billing Cadence
-            Text(
-                text = "Cadence Frequency",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(RecurrenceRule.DAILY, RecurrenceRule.WEEKLY, RecurrenceRule.MONTHLY).forEach { rule ->
-                    FilterChip(
-                        selected = selectedRecurrence == rule,
-                        onClick = { selectedRecurrence = rule },
-                        label = { Text(rule.displayName) }
-                    )
+            // 4. Cadence Frequency Selector
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Recurrence Cadence",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Cadence Categories
+                val cadenceList = listOf("Weekdays", "Daily", "Monthly", "Weekly", "Custom Days", "Weekends", "Bi-Weekly", "Yearly")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(cadenceList) { cadence ->
+                        FilterChip(
+                            selected = cadenceCategory == cadence,
+                            onClick = { cadenceCategory = cadence },
+                            label = { Text(cadence) }
+                        )
+                    }
+                }
+
+                // Sub-options based on cadence
+                when (cadenceCategory) {
+                    "Weekdays" -> {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Occurs Monday through Friday every week (ideal for daily allowances).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                    "Daily" -> {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Occurs every single day including weekends.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                    "Weekly" -> {
+                        Text(
+                            text = "Select Day of the Week",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val days = listOf("MON" to "Mon", "TUE" to "Tue", "WED" to "Wed", "THU" to "Thu", "FRI" to "Fri", "SAT" to "Sat", "SUN" to "Sun")
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            days.forEach { (code, label) ->
+                                FilterChip(
+                                    selected = selectedWeeklyDay == code,
+                                    onClick = { selectedWeeklyDay = code },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                    }
+                    "Custom Days" -> {
+                        Text(
+                            text = "Select Active Days",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val days = listOf("MON" to "Mon", "TUE" to "Tue", "WED" to "Wed", "THU" to "Thu", "FRI" to "Fri", "SAT" to "Sat", "SUN" to "Sun")
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(days) { (code, label) ->
+                                val isSelected = selectedCustomDays.contains(code)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedCustomDays = if (isSelected) {
+                                            if (selectedCustomDays.size > 1) selectedCustomDays - code else selectedCustomDays
+                                        } else {
+                                            selectedCustomDays + code
+                                        }
+                                    },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                    }
+                    "Monthly" -> {
+                        Text(
+                            text = "Day of the Month",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val commonDays = listOf("1", "5", "10", "15", "20", "25", "30", "Last")
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(commonDays) { day ->
+                                FilterChip(
+                                    selected = selectedMonthlyDay == day,
+                                    onClick = { selectedMonthlyDay = day },
+                                    label = { Text(if (day == "Last") "Last Day" else "${day}${when(day) { "1" -> "st"; "2" -> "nd"; "3" -> "rd"; else -> "th" }}") }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            // 5. Target Account
+            // 5. Custom Time of Day Picker
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Time of Day",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val displayHour = hour12
+                    val displayMin = String.format(Locale.getDefault(), "%02d", selectedMinute)
+                    val amPmStr = if (isPm) "PM" else "AM"
+                    Text(
+                        text = "$displayHour:$displayMin $amPmStr",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Quick presets
+                val timePresets = listOf(
+                    "08:00 AM (Morning)" to (8 to 0),
+                    "12:00 PM (Noon)" to (12 to 0),
+                    "05:00 PM (Evening)" to (17 to 0),
+                    "08:00 PM (Night)" to (20 to 0)
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(timePresets) { (label, time) ->
+                        val (h24, m) = time
+                        val h12 = if (h24 % 12 == 0) 12 else h24 % 12
+                        val pm = h24 >= 12
+                        val isSelected = hour12 == h12 && isPm == pm && selectedMinute == m
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                hour12 = h12
+                                isPm = pm
+                                selectedMinute = m
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                // Interactive Hour and Minute adjusters
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Hour Selector
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Hour: ", style = MaterialTheme.typography.labelSmall)
+                            IconButton(
+                                onClick = { hour12 = if (hour12 <= 1) 12 else hour12 - 1 },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Text("-", fontWeight = FontWeight.Bold)
+                            }
+                            Text("$hour12", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp))
+                            IconButton(
+                                onClick = { hour12 = if (hour12 >= 12) 1 else hour12 + 1 },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Text("+", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Minute Selector
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Min: ", style = MaterialTheme.typography.labelSmall)
+                            val minuteOptions = listOf(0, 15, 30, 45)
+                            minuteOptions.forEach { m ->
+                                Surface(
+                                    onClick = { selectedMinute = m },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (selectedMinute == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                ) {
+                                    Text(
+                                        text = String.format(Locale.getDefault(), "%02d", m),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selectedMinute == m) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // AM / PM Toggle
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            Surface(
+                                onClick = { isPm = false },
+                                color = if (!isPm) MaterialTheme.colorScheme.primary else Color.Transparent
+                            ) {
+                                Text(
+                                    "AM",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (!isPm) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                            Surface(
+                                onClick = { isPm = true },
+                                color = if (isPm) MaterialTheme.colorScheme.primary else Color.Transparent
+                            ) {
+                                Text(
+                                    "PM",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isPm) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Target Account
             if (accounts.isNotEmpty()) {
                 Text(
-                    text = if (itemType == TransactionType.EXPENSE) "Deduct From Mode of Cash" else "Deposit Into Mode of Cash",
+                    text = if (itemType == TransactionType.EXPENSE) "Deduct From Account" else "Deposit Into Account",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -1093,6 +1467,38 @@ fun RevampedAddSubscriptionBottomSheet(
                             } else null
                         )
                     }
+                }
+            }
+
+            // 7. Dynamic Summary Preview Banner
+            val previewCal = Calendar.getInstance().apply {
+                val hour24 = if (isPm) { if (hour12 == 12) 12 else hour12 + 12 } else { if (hour12 == 12) 0 else hour12 }
+                set(Calendar.HOUR_OF_DAY, hour24)
+                set(Calendar.MINUTE, selectedMinute)
+            }
+            val scheduleFormatted = com.example.util.RecurrenceHelper.formatSchedule(currentRecurrenceRule, previewCal.time)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (itemType == TransactionType.INCOME) Color(0xFF00C853).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EventRepeat,
+                        contentDescription = null,
+                        tint = if (itemType == TransactionType.INCOME) Color(0xFF00C853) else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Schedule: ${if (itemType == TransactionType.INCOME) "Receives" else "Deducts"} $scheduleFormatted",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (itemType == TransactionType.INCOME) Color(0xFF007E33) else MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
@@ -1136,13 +1542,22 @@ fun RevampedAddSubscriptionBottomSheet(
                             listOf("receivable", "recurring")
                         }
 
+                        // Calculate final start date with exact hour and minute
+                        val finalStartDate = Calendar.getInstance().apply {
+                            val hour24 = if (isPm) { if (hour12 == 12) 12 else hour12 + 12 } else { if (hour12 == 12) 0 else hour12 }
+                            set(Calendar.HOUR_OF_DAY, hour24)
+                            set(Calendar.MINUTE, selectedMinute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.time
+
                         onSaveSubscription(
                             amount,
                             itemType,
                             accountId,
                             selectedCategoryId,
-                            selectedRecurrence,
-                            existingItem?.date ?: Date(),
+                            currentRecurrenceRule,
+                            finalStartDate,
                             nameInput.trim(),
                             labels
                         )
@@ -1156,53 +1571,307 @@ fun RevampedAddSubscriptionBottomSheet(
     }
 }
 
-// -----------------------------------------------------------------------------------------
-// RECURRENCE & DATE HELPERS
-// -----------------------------------------------------------------------------------------
+/**
+ * Dialog for receiving or paying the next scheduled recurring item, with support for
+ * early payments, custom amounts (e.g., partial advance allowance), account selection,
+ * and optional schedule cycle advancement.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReceiveOrPayNextPaymentDialog(
+    recurringItem: TransactionEntity,
+    accounts: List<AccountEntity>,
+    currencyCode: String,
+    onDismiss: () -> Unit,
+    onConfirm: (amount: Double, accountId: Long, advanceCycle: Boolean, note: String?) -> Unit
+) {
+    val isIncome = recurringItem.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)
+    val itemTitle = recurringItem.note ?: recurringItem.type
+    val defaultAmount = recurringItem.amount
 
-private fun calculateMonthlyEquivalent(amount: Double, recurrenceRule: String): Double {
-    return when (recurrenceRule.lowercase(Locale.getDefault())) {
-        "daily" -> amount * 30.0
-        "weekly" -> amount * 4.333
-        "monthly" -> amount
-        "yearly", "annual" -> amount / 12.0
-        else -> amount
+    var amountInput by remember { mutableStateOf(String.format(Locale.US, "%.2f", defaultAmount)) }
+    var selectedAccountId by remember { mutableStateOf(recurringItem.accountId) }
+    var advanceCycle by remember { mutableStateOf(true) }
+    var customNote by remember {
+        mutableStateOf(
+            if (isIncome) "$itemTitle (Early Payment Received)" else "$itemTitle (Early Payment)"
+        )
     }
-}
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var accountDropdownExpanded by remember { mutableStateOf(false) }
 
-private fun calculateNextDueDate(startDate: Date, frequency: String): Date {
-    val cal = Calendar.getInstance()
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
+    val nextDueDate = remember(recurringItem) {
+        com.example.util.RecurrenceHelper.calculateNextDueDate(recurringItem.date, recurringItem.recurrenceRule)
     }
-    cal.time = startDate
-    if (cal.after(today) || cal == today) return cal.time
+    val dateFormatter = remember { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.getDefault()) }
 
-    while (cal.before(today)) {
-        when (frequency.lowercase(Locale.getDefault())) {
-            "daily" -> cal.add(Calendar.DAY_OF_YEAR, 1)
-            "weekly" -> cal.add(Calendar.WEEK_OF_YEAR, 1)
-            "monthly" -> cal.add(Calendar.MONTH, 1)
-            "yearly", "annual" -> cal.add(Calendar.YEAR, 1)
-            else -> {
-                cal.add(Calendar.MONTH, 1)
-                break
+    val themeColor = if (isIncome) Color(0xFF00C853) else MaterialTheme.colorScheme.primary
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Surface(
+                shape = CircleShape,
+                color = themeColor.copy(alpha = 0.12f),
+                modifier = Modifier.size(52.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                        contentDescription = null,
+                        tint = themeColor,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        },
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (isIncome) "Receive Inflow" else "Pay Scheduled Bill",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = itemTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColor
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Schedule info card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Next Scheduled Cycle:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = dateFormatter.format(nextDueDate),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Amount Input
+                OutlinedTextField(
+                    value = amountInput,
+                    onValueChange = {
+                        amountInput = it
+                        errorMessage = null
+                    },
+                    label = { Text(if (isIncome) "Amount Received" else "Amount to Pay") },
+                    prefix = {
+                        Text(
+                            CurrencyUtils.getSymbol(currencyCode),
+                            fontWeight = FontWeight.Bold,
+                            color = themeColor
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Quick Amount Presets
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = amountInput == String.format(Locale.US, "%.2f", defaultAmount),
+                        onClick = {
+                            amountInput = String.format(Locale.US, "%.2f", defaultAmount)
+                        },
+                        label = { Text("Full (${CurrencyUtils.formatCurrency(defaultAmount, currencyCode)})") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = amountInput == String.format(Locale.US, "%.2f", defaultAmount / 2.0),
+                        onClick = {
+                            amountInput = String.format(Locale.US, "%.2f", defaultAmount / 2.0)
+                        },
+                        label = { Text("50% (${CurrencyUtils.formatCurrency(defaultAmount / 2.0, currencyCode)})") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Account Selector
+                Text(
+                    text = if (isIncome) "Deposit Into Mode / Account:" else "Pay From Account:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                val selectedAccount = accounts.find { it.id == selectedAccountId } ?: accounts.firstOrNull()
+                Card(
+                    onClick = { accountDropdownExpanded = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = selectedAccount?.name ?: "Select Account",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (selectedAccount != null) {
+                                Text(
+                                    text = "Balance: ${CurrencyUtils.formatCurrency(selectedAccount.currentBalance, selectedAccount.currencyCode)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Change ▼",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = themeColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Account Selection Menu
+                if (accountDropdownExpanded) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            accounts.forEach { acc ->
+                                Card(
+                                    onClick = {
+                                        selectedAccountId = acc.id
+                                        accountDropdownExpanded = false
+                                    },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (acc.id == selectedAccountId) themeColor.copy(alpha = 0.12f) else Color.Transparent
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(acc.name, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            CurrencyUtils.formatCurrency(acc.currentBalance, acc.currencyCode),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Advance Cycle Checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Checkbox(
+                        checked = advanceCycle,
+                        onCheckedChange = { advanceCycle = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Advance to next schedule cycle",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Moves next due date forward automatically",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Note Field
+                OutlinedTextField(
+                    value = customNote,
+                    onValueChange = { customNote = it },
+                    label = { Text("Transaction Memo / Note") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = amountInput.toDoubleOrNull()
+                    if (amount == null || amount <= 0.0) {
+                        errorMessage = "Please enter a valid amount"
+                        return@Button
+                    }
+                    val targetAccount = selectedAccountId
+                    if (targetAccount == 0L && accounts.isNotEmpty()) {
+                        selectedAccountId = accounts.first().id
+                    }
+                    onConfirm(amount, selectedAccountId, advanceCycle, customNote)
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = themeColor,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(if (isIncome) "Confirm Receive" else "Confirm Payment")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         }
-    }
-    return cal.time
-}
-
-private fun daysUntil(targetDate: Date): Long {
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-    val diff = targetDate.time - today
-    return (diff / (1000 * 60 * 60 * 24)).coerceAtLeast(0)
+    )
 }

@@ -39,7 +39,8 @@ fun NumericKeypad(
     onBackspaceClick: () -> Unit,
     onEnterClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onClearClick: (() -> Unit)? = null
+    onClearClick: (() -> Unit)? = null,
+    themeColor: Color = MaterialTheme.colorScheme.primary
 ) {
     val keyRows = listOf(
         listOf("1", "2", "3"),
@@ -80,7 +81,7 @@ fun NumericKeypad(
         Surface(
             onClick = onEnterClick,
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primary,
+            color = themeColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
@@ -94,14 +95,14 @@ fun NumericKeypad(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = "Confirm",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = Color.White,
                     modifier = Modifier.size(22.dp)
                 )
                 Text(
                     text = "Confirm Amount",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = Color.White,
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }

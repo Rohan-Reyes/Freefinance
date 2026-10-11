@@ -65,5 +65,8 @@ data class TransactionEntity(
     val labels: List<String> = emptyList(), // Project/Debt labels
 
     @ColumnInfo(name = "note")
-    val note: String? = null
+    val note: String? = null,
+
+    @ColumnInfo(name = "proof_image_uri")
+    val proofImageUri: String? = null
 )

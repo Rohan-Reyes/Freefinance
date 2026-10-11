@@ -78,12 +78,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.DebtEntity
+import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.BudgetProgress
 import com.example.data.local.model.CategoryExpense
 import com.example.data.local.model.DailyBalance
 import com.example.data.local.model.MonthlySpendingTrend
 import com.example.data.preferences.HeroBackgroundStyle
+import com.example.ui.theme.LiquidCashColor
+import com.example.ui.theme.LockedVaultColor
 import com.example.util.CurrencyUtils
 import com.example.viewmodels.ExpectedReceivable
 import com.example.viewmodels.LiquidVsLockedState
@@ -180,7 +183,7 @@ fun BalanceCard(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                text = "$accountCount ${if (accountCount == 1) "Cash Mode" else "Cash Modes"}",
+                                text = "$accountCount ${if (accountCount == 1) "Account" else "Accounts"}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (isGradient) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -611,6 +614,7 @@ fun DebtSummaryCard(
 
 /**
  * 5. LiquidVsLockedCard: Spendable Cash vs Locked Savings split indicator.
+ * Revamped with high-contrast distinct tones (Electric Mint vs Royal Amethyst Violet) and structured sub-cards.
  */
 @Composable
 fun LiquidVsLockedCard(
@@ -619,6 +623,9 @@ fun LiquidVsLockedCard(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val liquidPct = (state.liquidRatio * 100).coerceIn(0f, 100f)
+    val lockedPct = (100f - liquidPct).coerceIn(0f, 100f)
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
@@ -643,10 +650,10 @@ fun LiquidVsLockedCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
+                        imageVector = Icons.Default.Savings,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                     Text(
                         text = "LIQUID VS LOCKED FUNDS",
@@ -657,62 +664,117 @@ fun LiquidVsLockedCard(
                     )
                 }
 
-                Text(
-                    text = String.format(
-                        Locale.getDefault(),
-                        "%.0f%% Liquid",
-                        (state.liquidRatio * 100)
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Stacked Bar
-            ClipSplitProgressBar(
-                leftRatio = state.liquidRatio,
-                leftColor = MaterialTheme.colorScheme.primary,
-                rightColor = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = LiquidCashColor.copy(alpha = 0.15f)
+                ) {
                     Text(
-                        text = "Spendable Liquid",
+                        text = String.format(Locale.getDefault(), "%.0f%% Liquid", liquidPct),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = CurrencyUtils.formatCurrency(state.spendableLiquid, currencyCode),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.ExtraBold,
+                        color = LiquidCashColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
+            }
 
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "Locked / Vaults",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = CurrencyUtils.formatCurrency(state.lockedSavings, currencyCode),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // High-Contrast Dual Progress Gauge Bar
+            ClipSplitProgressBar(
+                leftRatio = state.liquidRatio,
+                leftColor = LiquidCashColor,
+                rightColor = LockedVaultColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Dual Structured High-Contrast Highlight Boxes
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Liquid Box
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = LiquidCashColor.copy(alpha = 0.10f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LiquidCashColor.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(LiquidCashColor)
+                            )
+                            Text(
+                                text = "Spendable Liquid",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = CurrencyUtils.formatCurrency(state.spendableLiquid, currencyCode),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = LiquidCashColor
+                        )
+                        Text(
+                            text = String.format(Locale.getDefault(), "%.0f%% of total", liquidPct),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Locked Box
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = LockedVaultColor.copy(alpha = 0.10f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LockedVaultColor.copy(alpha = 0.35f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(LockedVaultColor)
+                            )
+                            Text(
+                                text = "Locked / Vaults",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = CurrencyUtils.formatCurrency(state.lockedSavings, currencyCode),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = LockedVaultColor
+                        )
+                        Text(
+                            text = String.format(Locale.getDefault(), "%.0f%% of total", lockedPct),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -1532,6 +1594,197 @@ fun MonthlySpendingTrendsCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 13. PlannedPayoutsCard: Displays upcoming one-off scheduled commitments / planned disbursements.
+ */
+@Composable
+fun PlannedPayoutsCard(
+    plannedPayouts: List<PlannedPayoutEntity>,
+    currencyCode: String = "USD",
+    onViewAllClicked: () -> Unit,
+    onPayNowClicked: (PlannedPayoutEntity) -> Unit = {},
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val pendingPayouts = remember(plannedPayouts) {
+        plannedPayouts.filter { it.status.equals("PENDING", ignoreCase = true) }
+            .sortedBy { it.dueDate }
+    }
+    val totalPendingAmount = remember(pendingPayouts) { pendingPayouts.sumOf { it.amount } }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EventNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "PLANNED PAYOUTS",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onViewAllClicked() }
+                ) {
+                    Text(
+                        text = "Manage",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (pendingPayouts.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF00C853),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "No pending planned payouts. You're all settled!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Upcoming scheduled: " + CurrencyUtils.formatCurrency(totalPendingAmount, currencyCode) + " across ${pendingPayouts.size} commitment(s)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+                val now = System.currentTimeMillis()
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    pendingPayouts.take(3).forEach { payout ->
+                        val isOverdue = payout.dueDate.time < now - (24 * 3600 * 1000)
+                        val daysRemaining = ((payout.dueDate.time - now) / (24 * 3600 * 1000)).toInt()
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = payout.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (payout.priority == "HIGH") {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFFF5252).copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = "HIGH",
+                                                    color = Color(0xFFFF5252),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    val dueLabel = if (isOverdue) "Overdue" else if (daysRemaining == 0) "Due today" else "Due in ${daysRemaining}d (${sdf.format(payout.dueDate)})"
+                                    Text(
+                                        text = dueLabel + (if (!payout.payeeOrVendor.isNullOrBlank()) " • ${payout.payeeOrVendor}" else ""),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isOverdue) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = CurrencyUtils.formatCurrency(payout.amount, currencyCode),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    FilledTonalButton(
+                                        onClick = { onPayNowClicked(payout) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

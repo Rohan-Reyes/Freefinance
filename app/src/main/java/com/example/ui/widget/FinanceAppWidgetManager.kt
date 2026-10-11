@@ -56,46 +56,48 @@ object FinanceAppWidgetManager {
     fun updateAllWidgets(context: Context) {
         val appWidgetManager = AppWidgetManager.getInstance(context) ?: return
 
-        val balanceWidget = ComponentName(context, QuickBalanceWidgetProvider::class.java)
-        val balanceIds = appWidgetManager.getAppWidgetIds(balanceWidget)
-        if (balanceIds.isNotEmpty()) {
-            QuickBalanceWidgetProvider.updateWidgets(context, appWidgetManager, balanceIds)
+        fun updateProvider(providerClass: Class<out AppWidgetProvider>, updateAction: (IntArray) -> Unit) {
+            val component = ComponentName(context, providerClass)
+            val ids = appWidgetManager.getAppWidgetIds(component)
+            if (ids.isNotEmpty()) {
+                updateAction(ids)
+                try {
+                    val updateIntent = Intent(context, providerClass).apply {
+                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+                    }
+                    context.sendBroadcast(updateIntent)
+                } catch (_: Exception) {
+                }
+            }
         }
 
-        val actionsWidget = ComponentName(context, QuickActionsWidgetProvider::class.java)
-        val actionIds = appWidgetManager.getAppWidgetIds(actionsWidget)
-        if (actionIds.isNotEmpty()) {
-            QuickActionsWidgetProvider.updateWidgets(context, appWidgetManager, actionIds)
+        updateProvider(QuickBalanceWidgetProvider::class.java) { ids ->
+            QuickBalanceWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
 
-        val budgetWidget = ComponentName(context, BudgetBurnWidgetProvider::class.java)
-        val budgetIds = appWidgetManager.getAppWidgetIds(budgetWidget)
-        if (budgetIds.isNotEmpty()) {
-            BudgetBurnWidgetProvider.updateWidgets(context, appWidgetManager, budgetIds)
+        updateProvider(QuickActionsWidgetProvider::class.java) { ids ->
+            QuickActionsWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
 
-        val trendsWidget = ComponentName(context, MonthlyTrendsWidgetProvider::class.java)
-        val trendIds = appWidgetManager.getAppWidgetIds(trendsWidget)
-        if (trendIds.isNotEmpty()) {
-            MonthlyTrendsWidgetProvider.updateWidgets(context, appWidgetManager, trendIds)
+        updateProvider(BudgetBurnWidgetProvider::class.java) { ids ->
+            BudgetBurnWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
 
-        val balanceSquareWidget = ComponentName(context, BalanceSquareWidgetProvider::class.java)
-        val balanceSquareIds = appWidgetManager.getAppWidgetIds(balanceSquareWidget)
-        if (balanceSquareIds.isNotEmpty()) {
-            BalanceSquareWidgetProvider.updateWidgets(context, appWidgetManager, balanceSquareIds)
+        updateProvider(MonthlyTrendsWidgetProvider::class.java) { ids ->
+            MonthlyTrendsWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
 
-        val budgetSquareWidget = ComponentName(context, BudgetSquareWidgetProvider::class.java)
-        val budgetSquareIds = appWidgetManager.getAppWidgetIds(budgetSquareWidget)
-        if (budgetSquareIds.isNotEmpty()) {
-            BudgetSquareWidgetProvider.updateWidgets(context, appWidgetManager, budgetSquareIds)
+        updateProvider(BalanceSquareWidgetProvider::class.java) { ids ->
+            BalanceSquareWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
 
-        val actionsSquareWidget = ComponentName(context, QuickActionsSquareWidgetProvider::class.java)
-        val actionsSquareIds = appWidgetManager.getAppWidgetIds(actionsSquareWidget)
-        if (actionsSquareIds.isNotEmpty()) {
-            QuickActionsSquareWidgetProvider.updateWidgets(context, appWidgetManager, actionsSquareIds)
+        updateProvider(BudgetSquareWidgetProvider::class.java) { ids ->
+            BudgetSquareWidgetProvider.updateWidgets(context, appWidgetManager, ids)
+        }
+
+        updateProvider(QuickActionsSquareWidgetProvider::class.java) { ids ->
+            QuickActionsSquareWidgetProvider.updateWidgets(context, appWidgetManager, ids)
         }
     }
 

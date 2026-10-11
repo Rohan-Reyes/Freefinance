@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,13 +16,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -27,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -47,17 +58,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.local.entity.AccountEntity
 import com.example.data.local.entity.CategoryEntity
 import com.example.data.local.model.TransactionType
 import com.example.util.CurrencyUtils
+import com.example.util.ReceiptStorageHelper
+import java.io.File
 
 /**
- * 1-Tap Quick Entry Modal Bottom Sheet with built-in custom NumericKeypad.
+ * 1-Tap Quick Entry Modal Bottom Sheet with built-in custom NumericKeypad and Photo Proof attachment.
  * Allows rapid logging of Income, Expense, or Transfer with instant balance synchronization.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,9 +91,11 @@ fun AddTransactionSheet(
         toAccountId: Long?,
         categoryId: Long?,
         labels: List<String>,
-        note: String?
+        note: String?,
+        proofImageUri: String?
     ) -> Unit
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var amountText by remember { mutableStateOf("") }
@@ -120,6 +138,48 @@ fun AddTransactionSheet(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showDetailsFields by remember { mutableStateOf(false) }
 
+    // Photo Proof state
+    var attachedProofUri by remember { mutableStateOf<String?>(null) }
+    var currentTempPhotoFile by remember { mutableStateOf<File?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            currentTempPhotoFile?.let { file ->
+                if (file.exists() && file.length() > 0) {
+                    attachedProofUri = file.absolutePath
+                    Toast.makeText(context, "Proof photo captured!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val file = ReceiptStorageHelper.createTempReceiptFile(context)
+            val uri = ReceiptStorageHelper.getUriForFile(context, file)
+            currentTempPhotoFile = file
+            cameraLauncher.launch(uri)
+        } else {
+            Toast.makeText(context, "Camera permission needed to capture proof", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val savedPath = ReceiptStorageHelper.saveUriToReceiptFile(context, uri)
+            if (savedPath != null) {
+                attachedProofUri = savedPath
+                Toast.makeText(context, "Proof image attached!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     val handleSave = {
         val parsedAmount = amountText.toDoubleOrNull()
         if (parsedAmount == null || parsedAmount <= 0) {
@@ -138,7 +198,8 @@ fun AddTransactionSheet(
                 if (selectedType == TransactionType.TRANSFER) selectedToAccountId else null,
                 if (selectedType != TransactionType.TRANSFER) selectedCategoryId else null,
                 parsedLabels,
-                noteText.ifBlank { null }
+                noteText.ifBlank { null },
+                attachedProofUri
             )
         }
     }
@@ -270,8 +331,13 @@ fun AddTransactionSheet(
                         onDismissRequest = { accountDropdownExpanded = false }
                     ) {
                         accounts.forEach { account ->
+                            val label = if (account.parentAccountId != null) {
+                                "↳ ${account.name} [${account.subAccountType ?: "Sub"}]"
+                            } else {
+                                "${account.name} (${account.currencyCode})"
+                            }
                             DropdownMenuItem(
-                                text = { Text("${account.name} (${account.currencyCode})") },
+                                text = { Text(label) },
                                 onClick = {
                                     selectedAccountId = account.id
                                     accountDropdownExpanded = false
@@ -306,8 +372,13 @@ fun AddTransactionSheet(
                             onDismissRequest = { toAccountDropdownExpanded = false }
                         ) {
                             accounts.filter { it.id != selectedAccountId }.forEach { account ->
+                                val toLabel = if (account.parentAccountId != null) {
+                                    "↳ ${account.name} [${account.subAccountType ?: "Sub"}]"
+                                } else {
+                                    "${account.name} (${account.currencyCode})"
+                                }
                                 DropdownMenuItem(
-                                    text = { Text("${account.name} (${account.currencyCode})") },
+                                    text = { Text(toLabel) },
                                     onClick = {
                                         selectedToAccountId = account.id
                                         toAccountDropdownExpanded = false
@@ -348,6 +419,156 @@ fun AddTransactionSheet(
                                         categoryDropdownExpanded = false
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Photo Proof / Receipt Attachment Section
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Photo Proof / Receipt",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (attachedProofUri != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.clickable {
+                                    ReceiptStorageHelper.deleteReceiptFile(attachedProofUri)
+                                    attachedProofUri = null
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove photo",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "Remove",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (attachedProofUri != null) {
+                        // Attached Photo Preview
+                        val imgFile = File(attachedProofUri!!)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            AsyncImage(
+                                model = imgFile,
+                                contentDescription = "Receipt proof",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Proof Attached",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00C853)
+                                )
+                                Text(
+                                    text = imgFile.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        // Action Buttons: Take Pic or Pick Photo
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val file = ReceiptStorageHelper.createTempReceiptFile(context)
+                                    val uri = ReceiptStorageHelper.getUriForFile(context, file)
+                                    currentTempPhotoFile = file
+                                    cameraLauncher.launch(uri)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("btn_take_photo_proof")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Take Pic", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("btn_choose_gallery_proof")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Gallery", style = MaterialTheme.typography.labelMedium)
+                                }
                             }
                         }
                     }
@@ -438,7 +659,8 @@ fun AddTransactionSheet(
                 },
                 onEnterClick = {
                     handleSave()
-                }
+                },
+                themeColor = themeColor
             )
         }
     }

@@ -41,7 +41,7 @@ class MonthlyTrendsWidgetProvider : AppWidgetProvider() {
                 var currentExpense = 0.0
                 var count = 0
                 for (tx in transactions) {
-                    if (tx.status == "Cleared" && tx.type == TransactionType.EXPENSE.displayName) {
+                    if (tx.status.equals("Cleared", ignoreCase = true) && tx.type.equals(TransactionType.EXPENSE.displayName, ignoreCase = true)) {
                         val txCal = Calendar.getInstance().apply { time = tx.date }
                         if (txCal.get(Calendar.YEAR) == currentYear && txCal.get(Calendar.MONTH) == currentMonth) {
                             currentExpense += tx.amount

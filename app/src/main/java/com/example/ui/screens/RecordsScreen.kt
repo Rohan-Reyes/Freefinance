@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,17 +20,25 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
+import coil.compose.AsyncImage
+import com.example.ui.components.ProofImageViewerDialog
+import java.io.File
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,10 +50,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,9 +77,12 @@ import com.example.data.local.entity.CategoryEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.TransactionType
 import com.example.ui.components.AddTransactionSheet
+import com.example.ui.components.EditTransactionSheet
 import com.example.ui.components.EmptyListPlaceholder
 import com.example.util.CurrencyUtils
+import com.example.viewmodels.DashboardEvent
 import com.example.viewmodels.DashboardViewModel
+import kotlinx.coroutines.flow.collectLatest
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -82,11 +100,45 @@ fun RecordsScreen(
     val categories by viewModel.allCategories.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val baseCurrency = uiState.baseCurrency
+    val canUndo by viewModel.canUndo.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTypeFilter by remember { mutableStateOf<String?>("All") }
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
     var showAddSheet by remember { mutableStateOf(false) }
+    var transactionToEdit by remember { mutableStateOf<TransactionEntity?>(null) }
+    var previewProofTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.eventFlow.collectLatest { event ->
+            when (event) {
+                is DashboardEvent.TransactionLogged -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = if (event.canUndo) "UNDO" else null,
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.undoLastTransaction()
+                    }
+                }
+                is DashboardEvent.TransactionUndone -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.message,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                is DashboardEvent.Error -> {
+                    snackbarHostState.showSnackbar(
+                        message = event.error,
+                        duration = SnackbarDuration.Short
+                    )
+                }
+                else -> {}
+            }
+        }
+    }
 
     // Filter transactions based on type, account, and search query
     val filteredTransactions = remember(allTransactions, selectedTypeFilter, selectedAccountId, searchQuery) {
@@ -122,12 +174,27 @@ fun RecordsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Master Records Ledger", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (canUndo) {
+                        IconButton(
+                            onClick = { viewModel.undoLastTransaction() },
+                            modifier = Modifier.testTag("records_undo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo Last Transaction",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             )
@@ -250,14 +317,25 @@ fun RecordsScreen(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
+                val accountMap = remember(accounts) { accounts.associateBy { it.id } }
+                val categoryMap = remember(categories) { categories.associateBy { it.id } }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    groupedTransactions.forEach { (_, txsInDay) ->
+                    groupedTransactions.forEach { (dayKey, txsInDay) ->
                         val headerDate = txsInDay.firstOrNull()?.date ?: Date()
+                        val headerText = formatHeaderDate(headerDate)
+                        val netDay = txsInDay.sumOf { tx ->
+                            when (tx.type) {
+                                TransactionType.INCOME.displayName -> tx.amount
+                                TransactionType.EXPENSE.displayName -> -tx.amount
+                                else -> 0.0
+                            }
+                        }
 
-                        stickyHeader {
+                        stickyHeader(key = "header_$dayKey", contentType = "date_header") {
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
                                 modifier = Modifier.fillMaxWidth()
@@ -270,18 +348,11 @@ fun RecordsScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = formatHeaderDate(headerDate),
+                                        text = headerText,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    val netDay = txsInDay.sumOf { tx ->
-                                        when (tx.type) {
-                                            TransactionType.INCOME.displayName -> tx.amount
-                                            TransactionType.EXPENSE.displayName -> -tx.amount
-                                            else -> 0.0
-                                        }
-                                    }
                                     Text(
                                         text = String.format(
                                             Locale.getDefault(),
@@ -297,10 +368,14 @@ fun RecordsScreen(
                             }
                         }
 
-                        items(txsInDay, key = { it.id }) { tx ->
-                            val sourceAccount = accounts.find { it.id == tx.accountId }
-                            val destAccount = if (tx.toAccountId != null) accounts.find { it.id == tx.toAccountId } else null
-                            val category = categories.find { it.id == tx.categoryId }
+                        items(
+                            items = txsInDay,
+                            key = { it.id },
+                            contentType = { "record_row" }
+                        ) { tx ->
+                            val sourceAccount = accountMap[tx.accountId]
+                            val destAccount = tx.toAccountId?.let { accountMap[it] }
+                            val category = tx.categoryId?.let { categoryMap[it] }
 
                             MasterRecordItemRow(
                                 transaction = tx,
@@ -308,7 +383,9 @@ fun RecordsScreen(
                                 destAccount = destAccount,
                                 category = category,
                                 currencyCode = sourceAccount?.currencyCode ?: baseCurrency,
+                                onEdit = { transactionToEdit = tx },
                                 onDelete = { viewModel.deleteTransaction(tx) },
+                                onViewProof = { previewProofTransaction = tx },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                             )
                         }
@@ -326,7 +403,7 @@ fun RecordsScreen(
             baseCurrency = currentAccount?.currencyCode ?: baseCurrency,
             initialAccountId = selectedAccountId,
             onDismissRequest = { showAddSheet = false },
-            onSaveTransaction = { amount, type, accId, toAccId, catId, labels, note ->
+            onSaveTransaction = { amount, type, accId, toAccId, catId, labels, note, proofUri ->
                 viewModel.addQuickTransaction(
                     amount = amount,
                     type = type,
@@ -334,11 +411,46 @@ fun RecordsScreen(
                     toAccountId = toAccId,
                     categoryId = catId,
                     labels = labels,
-                    note = note
+                    note = note,
+                    proofImageUri = proofUri
                 )
                 showAddSheet = false
             }
         )
+    }
+
+    // Edit Transaction Sheet
+    transactionToEdit?.let { tx ->
+        EditTransactionSheet(
+            transaction = tx,
+            accounts = accounts,
+            categories = categories,
+            baseCurrency = baseCurrency,
+            onDismissRequest = { transactionToEdit = null },
+            onSaveTransaction = { updatedTx ->
+                viewModel.updateTransaction(updatedTx, tx)
+                transactionToEdit = null
+            },
+            onDeleteTransaction = {
+                viewModel.deleteTransaction(tx)
+                transactionToEdit = null
+            }
+        )
+    }
+
+    // Proof Photo Full View Dialog
+    previewProofTransaction?.let { tx ->
+        tx.proofImageUri?.let { uri ->
+            val srcAcc = accounts.find { it.id == tx.accountId }
+            val cat = categories.find { it.id == tx.categoryId }
+            ProofImageViewerDialog(
+                imageUri = uri,
+                title = tx.note?.takeIf { it.isNotBlank() } ?: cat?.name ?: tx.type,
+                amountText = CurrencyUtils.formatCurrency(tx.amount, srcAcc?.currencyCode ?: baseCurrency),
+                subtitle = SimpleDateFormat("MMM d, yyyy • hh:mm a", Locale.getDefault()).format(tx.date),
+                onDismissRequest = { previewProofTransaction = null }
+            )
+        }
     }
 }
 
@@ -349,30 +461,57 @@ fun MasterRecordItemRow(
     destAccount: AccountEntity?,
     category: CategoryEntity?,
     currencyCode: String = "USD",
+    onEdit: () -> Unit = {},
     onDelete: () -> Unit,
+    onViewProof: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isIncome = transaction.type.equals(TransactionType.INCOME.displayName, ignoreCase = true)
-    val isExpense = transaction.type.equals(TransactionType.EXPENSE.displayName, ignoreCase = true)
-    val isTransfer = transaction.type.equals(TransactionType.TRANSFER.displayName, ignoreCase = true)
+    val isIncome = remember(transaction.type) { transaction.type.equals(TransactionType.INCOME.displayName, ignoreCase = true) }
+    val isExpense = remember(transaction.type) { transaction.type.equals(TransactionType.EXPENSE.displayName, ignoreCase = true) }
+    val isTransfer = remember(transaction.type) { transaction.type.equals(TransactionType.TRANSFER.displayName, ignoreCase = true) }
 
-    val amountColor = when {
-        isIncome -> Color(0xFF00C853)
-        isExpense -> Color(0xFFFF3B30)
-        else -> MaterialTheme.colorScheme.primary
+    val amountColor = remember(isIncome, isExpense) {
+        when {
+            isIncome -> Color(0xFF00C853)
+            isExpense -> Color(0xFFFF3B30)
+            else -> Color(0xFF1976D2)
+        }
     }
 
-    val typeIcon = when {
-        isIncome -> Icons.Default.ArrowDownward
-        isExpense -> Icons.Default.ArrowUpward
-        else -> Icons.Default.SwapHoriz
+    val typeIcon = remember(isIncome, isExpense) {
+        when {
+            isIncome -> Icons.Default.ArrowDownward
+            isExpense -> Icons.Default.ArrowUpward
+            else -> Icons.Default.SwapHoriz
+        }
     }
 
-    val timeFormatter = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+    val formattedTime = remember(transaction.date) {
+        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(transaction.date)
+    }
+
+    val titleText = remember(transaction.note, category?.name, isTransfer, transaction.type) {
+        transaction.note?.takeIf { it.isNotBlank() }
+            ?: category?.name
+            ?: (if (isTransfer) "Transfer" else transaction.type)
+    }
+
+    val accountDesc = remember(isTransfer, destAccount?.name, sourceAccount?.name) {
+        when {
+            isTransfer && destAccount != null -> "${sourceAccount?.name ?: "Account"} → ${destAccount.name}"
+            else -> sourceAccount?.name ?: "Main Account"
+        }
+    }
+
+    val formattedAmount = remember(transaction.amount, currencyCode, isIncome, isExpense) {
+        val prefix = if (isIncome) "+" else if (isExpense) "-" else ""
+        "$prefix${CurrencyUtils.formatCurrency(transaction.amount, currencyCode)}"
+    }
 
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        onClick = onEdit,
         modifier = modifier.fillMaxWidth()
     ) {
         Row(
@@ -401,26 +540,66 @@ fun MasterRecordItemRow(
 
             // Details
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = transaction.note?.takeIf { it.isNotBlank() }
-                        ?: category?.name
-                        ?: (if (isTransfer) "Transfer" else transaction.type),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = titleText,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    // Photo Proof Badge
+                    if (!transaction.proofImageUri.isNullOrBlank()) {
+                        val file = File(transaction.proofImageUri)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                            modifier = Modifier.clickable { onViewProof?.invoke() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (file.exists()) {
+                                    AsyncImage(
+                                        model = file,
+                                        contentDescription = "Photo Proof",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = "Proof",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                                Text(
+                                    text = "Proof",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val accountDesc = when {
-                        isTransfer && destAccount != null -> "${sourceAccount?.name ?: "Account"} → ${destAccount.name}"
-                        else -> sourceAccount?.name ?: "Main Account"
-                    }
                     Text(
                         text = accountDesc,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = " • ${timeFormatter.format(transaction.date)}",
+                        text = " • $formattedTime",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -447,30 +626,42 @@ fun MasterRecordItemRow(
                 }
             }
 
-            // Amount & Delete action
+            // Amount & Edit / Delete action
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = String.format(
-                        Locale.getDefault(),
-                        "%s%s",
-                        if (isIncome) "+" else if (isExpense) "-" else "",
-                        CurrencyUtils.formatCurrency(transaction.amount, currencyCode)
-                    ),
+                    text = formattedAmount,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = amountColor
                 )
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp)
-                    )
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }

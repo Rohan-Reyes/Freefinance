@@ -13,13 +13,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.example.ui.components.TransactionSuccessAnimationOverlay
 import com.example.ui.screens.AccountLogScreen
+import com.example.ui.screens.AnalyticsScreen
 import com.example.ui.screens.ApkReleaseScreen
 import com.example.ui.screens.AssetsScreen
 import com.example.ui.screens.BudgetScreen
@@ -50,7 +54,8 @@ enum class MainDestination {
   HOME_SCREEN_WIDGETS,
   RECEIPTS_INBOX,
   ASSETS,
-  APK_RELEASES
+  APK_RELEASES,
+  ANALYTICS
 }
 
 class MainActivity : ComponentActivity() {
@@ -63,6 +68,11 @@ class MainActivity : ComponentActivity() {
   private var quickAddState by mutableStateOf(false)
   private var quickPicState by mutableStateOf(false)
 
+  override fun onResume() {
+    super.onResume()
+    com.example.ui.widget.FinanceAppWidgetManager.updateAllWidgets(applicationContext)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
@@ -70,7 +80,9 @@ class MainActivity : ComponentActivity() {
     handleIntent(intent)
 
     setContent {
-      MyApplicationTheme {
+      val appThemePreset by dashboardViewModel.appThemePreset.collectAsState()
+
+      MyApplicationTheme(themePreset = appThemePreset) {
         var currentDestination by remember { mutableStateOf(destinationState) }
         var selectedAccountId by remember { mutableStateOf<Long?>(null) }
         val openQuickAdd = quickAddState
@@ -86,7 +98,8 @@ class MainActivity : ComponentActivity() {
           quickPicState = false
         }
 
-        AnimatedContent(
+        Box(modifier = Modifier.fillMaxSize()) {
+          AnimatedContent(
           targetState = currentDestination,
           transitionSpec = {
             if (targetState == MainDestination.DASHBOARD) {
@@ -156,6 +169,10 @@ class MainActivity : ComponentActivity() {
                 onNavigateToAssets = {
                   currentDestination = MainDestination.ASSETS
                   destinationState = MainDestination.ASSETS
+                },
+                onNavigateToAnalytics = {
+                  currentDestination = MainDestination.ANALYTICS
+                  destinationState = MainDestination.ANALYTICS
                 }
               )
             }
@@ -213,7 +230,8 @@ class MainActivity : ComponentActivity() {
                 viewModel = dashboardViewModel,
                 onNavigateBack = { currentDestination = MainDestination.DASHBOARD },
                 onNavigateToWidgets = { currentDestination = MainDestination.HOME_SCREEN_WIDGETS },
-                onNavigateToApkReleases = { currentDestination = MainDestination.APK_RELEASES }
+                onNavigateToApkReleases = { currentDestination = MainDestination.APK_RELEASES },
+                onNavigateToAnalytics = { currentDestination = MainDestination.ANALYTICS }
               )
             }
             MainDestination.HOME_SCREEN_WIDGETS -> {
@@ -244,8 +262,17 @@ class MainActivity : ComponentActivity() {
                 onNavigateBack = { currentDestination = MainDestination.SETTINGS }
               )
             }
+            MainDestination.ANALYTICS -> {
+              AnalyticsScreen(
+                viewModel = dashboardViewModel,
+                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+              )
+            }
           }
         }
+
+        TransactionSuccessAnimationOverlay(viewModel = dashboardViewModel)
+      }
       }
     }
   }
@@ -268,6 +295,8 @@ class MainActivity : ComponentActivity() {
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "ASSETS" -> MainDestination.ASSETS
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "RELEASES" -> MainDestination.APK_RELEASES
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "APK" -> MainDestination.APK_RELEASES
+      intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "ANALYTICS" -> MainDestination.ANALYTICS
+      intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "FORECAST" -> MainDestination.ANALYTICS
       else -> MainDestination.DASHBOARD
     }
     destinationState = dest

@@ -24,7 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.HealthAndSafety
@@ -33,10 +36,14 @@ import androidx.compose.material.icons.filled.LocalAtm
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.TwoWheeler
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Restore
@@ -106,6 +113,9 @@ val categoryColorOptions = listOf(
 val categoryIconMap = mapOf(
     "ic_food" to Icons.Default.Fastfood,
     "ic_transport" to Icons.Default.TrendingUp,
+    "ic_motortaxi" to Icons.Default.DirectionsBike,
+    "ic_tech" to Icons.Default.Computer,
+    "ic_electronics" to Icons.Default.Tv,
     "ic_home" to Icons.Default.Home,
     "ic_utilities" to Icons.Default.Receipt,
     "ic_entertainment" to Icons.Default.Movie,

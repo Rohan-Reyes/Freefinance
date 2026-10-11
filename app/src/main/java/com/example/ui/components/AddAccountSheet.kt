@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
@@ -33,8 +34,8 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Smartphone
-import com.example.util.BankAppLauncher
-import com.example.util.BankAppInfo
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,7 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.AccountEntity
 import com.example.data.local.model.AccountType
 import com.example.data.local.model.CompoundingFrequency
+import com.example.util.BankAppLauncher
 import com.example.util.CurrencyUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -92,6 +93,8 @@ import java.util.Locale
 fun AddAccountSheet(
     defaultCurrency: String = "USD",
     initialAccount: AccountEntity? = null,
+    allAccounts: List<AccountEntity> = emptyList(),
+    preselectedParentAccountId: Long? = null,
     onDismissRequest: () -> Unit,
     onSaveAccount: (
         name: String,
@@ -103,7 +106,10 @@ fun AddAccountSheet(
         currencyCode: String,
         isLocked: Boolean,
         lockedUntil: Date?,
-        linkedAppPackage: String?
+        linkedAppPackage: String?,
+        includeInTally: Boolean,
+        parentAccountId: Long?,
+        subAccountType: String?
     ) -> Unit,
     onDeleteAccount: ((AccountEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -118,6 +124,26 @@ fun AddAccountSheet(
         Color(0xFF009688), // Teal
         Color(0xFFE91E63)  // Pink
     )
+
+    // Available potential parent accounts (only top-level accounts, excluding self)
+    val availableParentAccounts = remember(allAccounts, initialAccount) {
+        allAccounts.filter { it.parentAccountId == null && it.id != (initialAccount?.id ?: 0L) }
+    }
+
+    val initialIsSubAccount = remember(initialAccount, preselectedParentAccountId) {
+        initialAccount?.parentAccountId != null || (preselectedParentAccountId != null && availableParentAccounts.isNotEmpty())
+    }
+
+    var isSubAccount by remember { mutableStateOf(initialIsSubAccount) }
+    var selectedParentAccountId by remember(initialAccount, preselectedParentAccountId) {
+        mutableStateOf<Long?>(
+            initialAccount?.parentAccountId ?: preselectedParentAccountId ?: availableParentAccounts.firstOrNull()?.id
+        )
+    }
+    var parentDropdownExpanded by remember { mutableStateOf(false) }
+    var subAccountType by remember(initialAccount) {
+        mutableStateOf(initialAccount?.subAccountType ?: "Savings")
+    }
 
     var name by remember(initialAccount) { mutableStateOf(initialAccount?.name ?: "") }
     var initialBalanceText by remember(initialAccount) {
@@ -144,7 +170,7 @@ fun AddAccountSheet(
         mutableStateOf(!initialAccount?.linkedAppPackage.isNullOrBlank())
     }
     var showYieldSection by remember(initialAccount) {
-        mutableStateOf((initialAccount?.interestRatePa ?: 0f) > 0f)
+        mutableStateOf((initialAccount?.interestRatePa ?: 0f) > 0f || (initialAccount?.subAccountType?.contains("Deposit", ignoreCase = true) == true) || (initialAccount?.subAccountType?.contains("Savings", ignoreCase = true) == true))
     }
     var interestRateText by remember(initialAccount) {
         mutableStateOf(
@@ -164,7 +190,8 @@ fun AddAccountSheet(
         mutableStateOf(
             initialAccount?.isLocked == true ||
             initialAccount?.lockedUntil != null ||
-            initialAccount?.type.equals(AccountType.INVESTMENT.displayName, ignoreCase = true)
+            initialAccount?.type.equals(AccountType.INVESTMENT.displayName, ignoreCase = true) ||
+            initialAccount?.subAccountType.equals("Time Deposit", ignoreCase = true)
         )
     }
     var lockedUntilDate by remember(initialAccount) {
@@ -176,6 +203,9 @@ fun AddAccountSheet(
             presetColors.indexOfFirst { it.toArgb() == initialAccount.color }.let { if (it >= 0) it else 0 }
         } else 0
         mutableIntStateOf(initialIdx)
+    }
+    var includeInTally by remember(initialAccount) {
+        mutableStateOf(initialAccount?.includeInTally ?: true)
     }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -199,7 +229,11 @@ fun AddAccountSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (initialAccount == null) "New Mode of Cash / Account" else "Edit Mode of Cash / Account",
+                    text = if (initialAccount == null) {
+                        if (isSubAccount) "New Sub-Account" else "New Account"
+                    } else {
+                        if (isSubAccount) "Edit Sub-Account" else "Edit Account"
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -220,11 +254,172 @@ fun AddAccountSheet(
                 }
             }
 
+            // Account Structure Toggle (Main Account vs Sub-Account)
+            if (availableParentAccounts.isNotEmpty() && initialAccount == null) {
+                Text(
+                    text = "ACCOUNT HIERARCHY",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = !isSubAccount,
+                        onClick = { isSubAccount = false },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    ) {
+                        Icon(Icons.Default.AccountBalance, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Main Account", fontSize = 12.sp)
+                    }
+                    SegmentedButton(
+                        selected = isSubAccount,
+                        onClick = {
+                            isSubAccount = true
+                            if (selectedParentAccountId == null) {
+                                selectedParentAccountId = availableParentAccounts.firstOrNull()?.id
+                            }
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) {
+                        Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Sub-Account", fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // Sub-Account Parent & Preset Configuration
+            AnimatedVisibility(visible = isSubAccount) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val parentAccount = availableParentAccounts.find { it.id == selectedParentAccountId }
+
+                    ExposedDropdownMenuBox(
+                        expanded = parentDropdownExpanded,
+                        onExpandedChange = { parentDropdownExpanded = !parentDropdownExpanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = parentAccount?.let { "${it.name} (${it.type})" } ?: "Select Parent Account",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Parent Main Account") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = parentDropdownExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = parentDropdownExpanded,
+                            onDismissRequest = { parentDropdownExpanded = false }
+                        ) {
+                            availableParentAccounts.forEach { parent ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(parent.color))
+                                            )
+                                            Text("${parent.name} (${parent.type} • ${parent.currencyCode})")
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedParentAccountId = parent.id
+                                        selectedCurrency = parent.currencyCode
+                                        if (parent.linkedAppPackage != null) {
+                                            linkedAppPackage = parent.linkedAppPackage
+                                        }
+                                        parentDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "SUB-ACCOUNT PURPOSE / CATEGORY",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val subPresets = listOf(
+                            "Savings",
+                            "Time Deposit",
+                            "Wallet",
+                            "Checking",
+                            "Emergency Fund",
+                            "Investment"
+                        )
+                        subPresets.forEach { preset ->
+                            val isSelected = subAccountType.equals(preset, ignoreCase = true)
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    subAccountType = preset
+                                    if (name.isBlank() || subPresets.contains(name)) {
+                                        name = preset
+                                    }
+                                    when (preset) {
+                                        "Time Deposit" -> {
+                                            isLocked = true
+                                            showYieldSection = true
+                                            selectedType = AccountType.INVESTMENT
+                                            if (lockedUntilDate == null) {
+                                                val cal = Calendar.getInstance()
+                                                cal.add(Calendar.DAY_OF_YEAR, 30)
+                                                lockedUntilDate = cal.time
+                                            }
+                                        }
+                                        "Savings" -> {
+                                            showYieldSection = true
+                                            selectedType = AccountType.BANK
+                                        }
+                                        "Wallet" -> {
+                                            selectedType = AccountType.E_WALLET
+                                        }
+                                        "Investment" -> {
+                                            selectedType = AccountType.INVESTMENT
+                                            showYieldSection = true
+                                        }
+                                        else -> {
+                                            selectedType = AccountType.BANK
+                                        }
+                                    }
+                                },
+                                label = { Text(preset, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Account Name
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Account Name (e.g., Primary Checking, Cash, Maya)") },
+                label = {
+                    Text(
+                        if (isSubAccount) "Sub-Account Name (e.g. Maya Savings, BPI Time Deposit)"
+                        else "Account Name (e.g., Primary Checking, Cash, Maya)"
+                    )
+                },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -282,7 +477,7 @@ fun AddAccountSheet(
 
             // Account Type / Mode Selector
             Text(
-                text = "MODE OF CARD / ACCOUNT TYPE",
+                text = "ACCOUNT TYPE",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -380,7 +575,7 @@ fun AddAccountSheet(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Hold funds until maturity date (e.g., MariBank deposit)",
+                                    text = "Hold funds until maturity date (e.g. Maya Time Deposit)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -413,7 +608,9 @@ fun AddAccountSheet(
                             )
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val presets = listOf(
@@ -526,7 +723,7 @@ fun AddAccountSheet(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Forecast compounding returns automatically",
+                                    text = "Forecast compounding returns (e.g., 4.5% or 6.0% p.a.)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -550,7 +747,7 @@ fun AddAccountSheet(
                                 value = interestRateText,
                                 onValueChange = { interestRateText = it },
                                 label = { Text("Annual Interest Rate (P.A. %)") },
-                                placeholder = { Text("e.g., 3.5 or 4.25") },
+                                placeholder = { Text("e.g., 3.5, 4.5, or 6.0") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.fillMaxWidth()
@@ -717,6 +914,68 @@ fun AddAccountSheet(
                 }
             }
 
+            // Tally / Total Net Worth Inclusion Setting
+            OutlinedCard(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = if (includeInTally) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { includeInTally = !includeInTally }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (includeInTally) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (includeInTally) Icons.Default.Check else Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = if (includeInTally) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Include in Total Balance / Tally",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (includeInTally)
+                                    "Counted in Unified Net Worth, Hero Balance, & widget totals"
+                                else
+                                    "Excluded from total tally — tracked separately as auxiliary/segregated funds",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = includeInTally,
+                        onCheckedChange = { includeInTally = it }
+                    )
+                }
+            }
+
             if (errorMessage != null) {
                 Text(
                     text = errorMessage ?: "",
@@ -742,6 +1001,9 @@ fun AddAccountSheet(
                         BankAppLauncher.findMatchingBankApp(name)?.packageName
                     }
 
+                    val finalParentAccountId = if (isSubAccount) selectedParentAccountId else null
+                    val finalSubAccountType = if (isSubAccount) subAccountType else null
+
                     onSaveAccount(
                         name.trim(),
                         selectedType.displayName,
@@ -752,7 +1014,10 @@ fun AddAccountSheet(
                         selectedCurrency,
                         isLocked,
                         if (isLocked) lockedUntilDate else null,
-                        finalAppPackage
+                        finalAppPackage,
+                        includeInTally,
+                        finalParentAccountId,
+                        finalSubAccountType
                     )
                 },
                 modifier = Modifier
@@ -762,7 +1027,9 @@ fun AddAccountSheet(
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text(
-                    text = if (initialAccount == null) "Create Account" else "Save Changes",
+                    text = if (initialAccount == null) {
+                        if (isSubAccount) "Create Sub-Account" else "Create Account"
+                    } else "Save Changes",
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -800,7 +1067,7 @@ fun AddAccountSheet(
     if (showDeleteConfirmDialog && initialAccount != null && onDeleteAccount != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Account / Mode?") },
+            title = { Text(if (initialAccount.parentAccountId != null) "Delete Sub-Account?" else "Delete Account?") },
             text = { Text("Are you sure you want to delete '${initialAccount.name}'? Transactions associated with this account will remain.") },
             confirmButton = {
                 Button(

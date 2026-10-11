@@ -20,6 +20,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :transactionId LIMIT 1")
     fun getTransactionById(transactionId: Long): Flow<TransactionEntity?>
 
+    @Query("SELECT * FROM transactions WHERE id = :transactionId LIMIT 1")
+    suspend fun getTransactionByIdImmediate(transactionId: Long): TransactionEntity?
+
     @Query("SELECT * FROM transactions WHERE account_id = :accountId OR to_account_id = :accountId ORDER BY date DESC")
     fun getTransactionsByAccount(accountId: Long): Flow<List<TransactionEntity>>
 
@@ -126,11 +129,11 @@ interface TransactionDao {
 
     /**
      * Requirement (4): Subscriptions and recurring bills.
-     * Fetches all transactions where recurrence_rule != 'None'.
+     * Fetches all active planned recurring transaction templates where recurrence_rule != 'None'.
      */
     @Query("""
         SELECT * FROM transactions 
-        WHERE UPPER(recurrence_rule) != 'NONE' 
+        WHERE UPPER(recurrence_rule) != 'NONE' AND recurrence_rule IS NOT NULL AND status = 'Planned'
         ORDER BY date DESC
     """)
     fun getRecurringTransactions(): Flow<List<TransactionEntity>>
@@ -140,4 +143,10 @@ interface TransactionDao {
      */
     @Query("UPDATE transactions SET recurrence_rule = 'None' WHERE id = :id")
     suspend fun stopRecurrence(id: Long)
+
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun deleteTransactionById(id: Long)
+
+    @Query("DELETE FROM transactions WHERE status = 'Planned' AND (UPPER(recurrence_rule) = 'NONE' OR recurrence_rule IS NULL)")
+    suspend fun deleteOrphanedPlannedTransactions()
 }
