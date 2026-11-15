@@ -48,13 +48,14 @@ code { font-size: .85em; background: var(--surface-3); padding: 1px 5px; border-
 .brand strong { display: block; font-family: var(--display); font-size: 1.05rem; }
 .brand small { color: var(--muted); font-size: .75rem; }
 .logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: transparent; font-weight: 700; font-size: 1.2rem; flex: none;
-  overflow: hidden; background: #0D2A5C url('icon.svg?v=11') center / cover no-repeat; box-shadow: 0 4px 14px rgba(13, 42, 92, .4); } /* same artwork as the Android launcher icon */
+  overflow: hidden; background: #0D2A5C url('icon.svg?v=12') center / cover no-repeat; box-shadow: 0 4px 14px rgba(13, 42, 92, .4); } /* same artwork as the Android launcher icon */
 .brand.big .logo { width: 46px; height: 46px; font-size: 1.5rem; }
 #nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 #nav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); font-weight: 500; font-size: .92rem; }
 #nav a:hover { background: var(--surface-3); color: var(--text); }
 #nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
-.ni { width: 20px; text-align: center; }
+.ico { width: 20px; height: 20px; fill: currentColor; flex: none; display: inline-block; vertical-align: middle; }
+.ni { width: 20px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .sync-pill { cursor: pointer; font-size: .78rem; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text-2); }
 .sync-pill.ok::first-letter { color: var(--pos); } .sync-pill.err { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 35%, var(--line)); }
 .sync-pill.busy { color: var(--accent); }

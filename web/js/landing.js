@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
 // Personal finance manager on Android and the web; local-first with optional sync.
-import { api } from './store.js?v=11';
-import { esc } from './ui.js?v=11';
+import { api } from './store.js?v=12';
+import { esc } from './ui.js?v=12';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
