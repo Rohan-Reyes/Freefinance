@@ -11,7 +11,7 @@
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_balance_square"
     android:previewLayout="@layout/widget_balance_square"
-    android:previewImage="@drawable/widget_logo"
+    android:previewImage="@drawable/widget_preview_balance_square"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/app_name" />

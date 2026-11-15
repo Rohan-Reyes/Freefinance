@@ -7,7 +7,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_quick_actions"
     android:previewLayout="@layout/widget_quick_actions"
-    android:previewImage="@drawable/widget_logo"
+    android:previewImage="@drawable/widget_preview_quick_actions"
     android:resizeMode="horizontal"
     android:widgetCategory="home_screen"
     android:description="@string/app_name" />
