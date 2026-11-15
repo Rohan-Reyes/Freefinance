@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
 // Personal finance manager on Android and the web; local-first with optional sync.
-import { api } from './store.js?v=10';
-import { esc } from './ui.js?v=10';
+import { api } from './store.js?v=11';
+import { esc } from './ui.js?v=11';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
@@ -86,8 +86,9 @@ export async function renderLanding(app, { onSignedIn, browserName }) {
   app.innerHTML = `<div class="lp">
     <header class="lp-nav">
       <a class="lp-brand" href="#lp-top"><span class="logo">₱</span><span>My Finance<small>by ATEN Systems</small></span></a>
-      <nav><a href="#lp-features">Features</a><a href="#lp-two">Phone &amp; web</a><a href="#lp-plan">Planner</a><a href="#lp-download">Download</a><a href="#lp-contact">Contact</a>
-        <a class="lp-btn small" href="#lp-signin">Sign in</a></nav>
+      <nav><a href="#lp-features">Features</a><a href="#lp-plan">Planner</a><a href="#lp-download">Download</a><a href="#lp-contact">Contact</a>
+        <a class="lp-btn small" href="#lp-signin" data-auth-mode="signin">Sign in</a>
+        <a class="lp-btn small primary" href="#lp-signup" data-auth-mode="signup">Sign up</a></nav>
     </header>
 
     <section class="lp-hero" id="lp-top">
@@ -171,7 +172,6 @@ export async function renderLanding(app, { onSignedIn, browserName }) {
           <li><b>${svg('sync')}</b><span>Optional: sign in to sync</span></li>
         </ol>
         <div class="lp-cta">${dlBtn()}</div>${meta}
-        ${a?.sha256 ? `<p class="lp-hash">SHA-256 ${esc(a.sha256)}</p>` : ''}
       </div>
     </section>
 
@@ -282,45 +282,67 @@ function wireInteractions(root) {
 
 function wireForm(app, status, { onSignedIn, browserName }) {
   const form = app.querySelector('form'), err = form.querySelector('.form-error');
-  const modes = status.needsSetup ? ['setup'] : status.signupOpen ? ['signin', 'signup'] : ['signin'];
-  let mode = modes[0];
-  const field = (name, label, type = 'text', ac = '') => `<label class="lp-field"><span>${label}</span><input name="${name}" type="${type}" ${ac ? `autocomplete="${ac}"` : ''} required></label>`;
+  const submitBtn = form.querySelector('button[type=submit]');
+  const modes = status.needsSetup ? ['setup'] : ['signin', 'signup'];
+  let mode = (location.hash === '#lp-signup' || location.hash === '#/signup') && !status.needsSetup ? 'signup' : modes[0];
+  const field = (name, label, type = 'text', ac = '', extra = '') =>
+    `<label class="lp-field"><span>${label}</span><input name="${name}" type="${type}" ${ac ? `autocomplete="${ac}"` : ''} ${extra} required></label>`;
   const draw = () => {
     form.querySelector('.tabs').innerHTML = modes.length > 1
-      ? modes.map((m) => `<button type="button" class="tab ${m === mode ? 'on' : ''}" data-mode="${m}">${m === 'signin' ? 'Sign in' : 'Create account'}</button>`).join('') : '';
-    const t = { setup: ['Set up your server', 'Enter your one-time setup code to create the admin account.', 'Create account'],
+      ? modes.map((m) => `<button type="button" class="tab ${m === mode ? 'on' : ''}" data-mode="${m}">${m === 'signin' ? 'Sign in' : 'Sign up'}</button>`).join('') : '';
+    const closed = mode === 'signup' && !status.signupOpen;
+    const t = {
+      setup: ['Set up your server', 'Enter your one-time setup code to create the admin account.', 'Create account'],
       signin: ['Sign in to the web app', 'Use the same account as Server sync in the Android app.', 'Sign in'],
-      signup: ['Create an account', 'Accounts are invite-only. Enter the invite code you were given.', 'Create account'] }[mode];
+      signup: closed
+        ? ['Sign up is invite-only', 'New accounts require an invite code from the server owner. Sign-up is currently closed on this server.', 'Back to sign in']
+        : ['Create an account', 'Accounts are invite-only. Enter the invite code you were given.', 'Create account'],
+    }[mode];
     form.querySelector('.form-title').textContent = t[0];
     form.querySelector('.form-sub').textContent = t[1];
-    form.querySelector('button[type=submit]').textContent = t[2];
-    form.querySelector('.fields').innerHTML =
+    submitBtn.textContent = t[2];
+    submitBtn.hidden = false;
+    form.querySelector('.fields').innerHTML = closed ? '' : (
       (mode === 'setup' ? field('setupCode', 'Setup code', 'text', 'one-time-code') : '')
       + (mode === 'signup' ? field('inviteCode', 'Invite code', 'text', 'off') : '')
-      + field('username', 'Username', 'text', 'username')
-      + field('password', mode === 'signin' ? 'Password' : 'Password (10+ characters)', 'password', mode === 'signin' ? 'current-password' : 'new-password')
-      + (mode !== 'signin' ? field('password2', 'Confirm password', 'password', 'new-password') : '');
+      + field('username', 'Username', 'text', 'username', 'minlength="3" maxlength="64" pattern="[A-Za-z0-9._@-]{3,64}"')
+      + field('password', mode === 'signin' ? 'Password' : 'Password (10+ characters)', 'password', mode === 'signin' ? 'current-password' : 'new-password', mode === 'signin' ? '' : 'minlength="10"')
+      + (mode !== 'signin' ? field('password2', 'Confirm password', 'password', 'new-password', 'minlength="10"') : '')
+    );
     err.hidden = true;
   };
   draw();
+  app.querySelectorAll('[data-auth-mode]').forEach((a) => a.addEventListener('click', (e) => {
+    const targetMode = a.dataset.authMode;
+    if (modes.includes(targetMode)) {
+      e.preventDefault();
+      mode = targetMode;
+      draw();
+      document.getElementById('lp-signin')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }));
   form.addEventListener('click', (e) => { const b = e.target.closest('[data-mode]'); if (b) { mode = b.dataset.mode; draw(); } });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (mode === 'signup' && !status.signupOpen) { mode = 'signin'; draw(); return; }
     const f = Object.fromEntries(new FormData(form));
     err.hidden = true;
+    const uname = String(f.username || '').trim();
+    if (!/^[A-Za-z0-9._@-]{3,64}$/.test(uname)) { err.textContent = 'Username: 3–64 letters, digits, or . _ @ -'; err.hidden = false; return; }
+    if (mode !== 'signin' && String(f.password || '').length < 10) { err.textContent = 'Password must be at least 10 characters'; err.hidden = false; return; }
     if (mode !== 'signin' && f.password !== f.password2) { err.textContent = 'Passwords do not match'; err.hidden = false; return; }
-    const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
+    submitBtn.disabled = true;
     try {
       const prev = JSON.parse(localStorage.getItem('ff_last_device') || 'null');
-      const body = { username: f.username, password: f.password, deviceName: browserName(), kind: 'web',
-        ...(prev && prev.username === f.username ? { deviceNo: prev.deviceNo } : {}),
+      const body = { username: uname, password: f.password, deviceName: browserName(), kind: 'web',
+        ...(prev && prev.username === uname ? { deviceNo: prev.deviceNo } : {}),
         ...(mode === 'setup' ? { setupCode: f.setupCode } : {}), ...(mode === 'signup' ? { inviteCode: f.inviteCode } : {}) };
       const res = await api({ setup: '/api/setup', signin: '/api/login', signup: '/api/signup' }[mode], { method: 'POST', body });
       document.documentElement.classList.remove('lp-active');
       history.replaceState(null, '', '#/dashboard'); // landing anchors are not app routes
       await onSignedIn(res);
     } catch (ex) {
-      err.textContent = ex.message; err.hidden = false; btn.disabled = false;
+      err.textContent = ex.message; err.hidden = false; submitBtn.disabled = false;
     }
   });
 }

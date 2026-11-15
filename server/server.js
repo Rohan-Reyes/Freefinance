@@ -160,6 +160,10 @@ function throttled(ip) {
   return f.n >= 10;
 }
 function noteFailure(ip) {
+  if (failures.size > 1000) {
+    const cutoff = Date.now() - 15 * 60e3;
+    for (const [k, v] of failures) if (v.first <= cutoff) failures.delete(k);
+  }
   const f = failures.get(ip);
   if (!f || Date.now() - f.first > 15 * 60e3) failures.set(ip, { n: 1, first: Date.now() });
   else f.n++;
@@ -428,6 +432,7 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 function serveDownload(req, res, url) {

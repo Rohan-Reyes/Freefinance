@@ -1,14 +1,14 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
-import { store } from './store.js?v=10';
-import * as L from './logic.js?v=10';
-import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=10';
-import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=10';
-import { BANKS, bankFor } from './banks.js?v=10';
-import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=10';
+import { store } from './store.js?v=11';
+import * as L from './logic.js?v=11';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=11';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=11';
+import { BANKS, bankFor } from './banks.js?v=11';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=11';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
-} from './ui.js?v=10';
+} from './ui.js?v=11';
 
 // ---------------------------------------------------------------- shared helpers
 const sortByName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
@@ -933,7 +933,7 @@ const settings = {
     </div>`;
   },
   async loadServerInfo() {
-    const { api } = await import('./store.js?v=10');
+    const { api } = await import('./store.js?v=11');
     const tok = store.auth.token;
     try {
       const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
@@ -943,7 +943,7 @@ const settings = {
     store.emit();
   },
   async loadDevices() {
-    try { const { api } = await import('./store.js?v=10'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
+    try { const { api } = await import('./store.js?v=11'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
     palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
@@ -963,10 +963,10 @@ const settings = {
       toast('Rate saved'); } }),
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will fall back to reference rates.')) store.remove('exchange_rates', el.dataset.id); },
-    newInvite: async () => { const { api } = await import('./store.js?v=10'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
-    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=10'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
-    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=10'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
-    changePassword: async () => { const { api } = await import('./store.js?v=10'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
+    newInvite: async () => { const { api } = await import('./store.js?v=11'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=11'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
+    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=11'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
+    changePassword: async () => { const { api } = await import('./store.js?v=11'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
     exportJson: async () => {
       toast('Preparing backup…');
       const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));

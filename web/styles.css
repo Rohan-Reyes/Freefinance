@@ -48,7 +48,7 @@ code { font-size: .85em; background: var(--surface-3); padding: 1px 5px; border-
 .brand strong { display: block; font-family: var(--display); font-size: 1.05rem; }
 .brand small { color: var(--muted); font-size: .75rem; }
 .logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: transparent; font-weight: 700; font-size: 1.2rem; flex: none;
-  overflow: hidden; background: #0D2A5C url('icon.svg?v=10') center / cover no-repeat; box-shadow: 0 4px 14px rgba(13, 42, 92, .4); } /* same artwork as the Android launcher icon */
+  overflow: hidden; background: #0D2A5C url('icon.svg?v=11') center / cover no-repeat; box-shadow: 0 4px 14px rgba(13, 42, 92, .4); } /* same artwork as the Android launcher icon */
 .brand.big .logo { width: 46px; height: 46px; font-size: 1.5rem; }
 #nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 #nav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); font-weight: 500; font-size: .92rem; }
@@ -417,7 +417,7 @@ html.lp-active, html.lp-active body { background: #07111F; color-scheme: dark; }
   background: color-mix(in srgb, #07111F 82%, transparent); backdrop-filter: blur(10px); }
 .lp-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 1.35rem; font-weight: 700; }
 .lp-brand small { display: block; font-family: 'IBM Plex Mono', monospace; font-size: .62rem; color: var(--or); letter-spacing: .14em; text-transform: uppercase; font-weight: 500; }
-.lp-nav nav { display: flex; gap: 22px; align-items: center; }
+.lp-nav nav { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .lp-nav nav a:not(.lp-btn) { color: var(--mut); text-decoration: none; font-size: .93rem; }
 .lp-nav nav a:not(.lp-btn):hover { color: var(--ink); }
 .lp-btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 16px; text-decoration: none;
@@ -437,7 +437,7 @@ html.lp-active, html.lp-active body { background: #07111F; color-scheme: dark; }
 .lp-lead { color: var(--mut); font-size: 1.12rem; line-height: 1.6; margin: 20px 0 26px; max-width: 36em; }
 .lp-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
 .lp-meta { color: var(--sub); font-family: 'IBM Plex Mono', monospace; font-size: .78rem; }
-.lp-stage { perspective: 1100px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lp-stage { perspective: 1100px; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; width: 100%; }
 .lp-phone { width: 300px; border-radius: 40px; padding: 18px 16px 22px; background: linear-gradient(165deg, #12305E, #0B1728 55%, #07111F);
   border: 1px solid var(--ln2); box-shadow: 0 40px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); transition: transform .25s ease-out; }
 .lp-notch { width: 90px; height: 6px; border-radius: 6px; background: var(--ln2); margin: 0 auto 14px; }
@@ -464,7 +464,7 @@ html.lp-active, html.lp-active body { background: #07111F; color-scheme: dark; }
 .lp-mc em { width: 20px; height: 20px; border-radius: 50%; background: #EB001B; }
 .lp-mc em + em { background: #F79E1B; margin-left: -8px; opacity: .9; }
 .lp-hint { color: var(--sub); font-size: .75rem; font-family: 'IBM Plex Mono', monospace; }
-.lp-local { display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center; padding: 40px; border: 1px solid var(--ln); border-radius: 24px;
+.lp-local { display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center; padding: 40px; margin-bottom: 56px; border: 1px solid var(--ln); border-radius: 24px;
   background: radial-gradient(circle at 0% 0%, rgba(26,77,156,.35), transparent 55%), var(--s); }
 .lp-local h2, .lp-get h2, .lp-faq h2, .lp-contact h2 { font-size: clamp(2rem, 4vw, 2.8rem); margin: 8px 0 12px; font-weight: 700; }
 .lp-local p { color: var(--mut); line-height: 1.6; min-height: 5.2em; }
@@ -562,7 +562,7 @@ html.lp-active, html.lp-active body { background: #07111F; color-scheme: dark; }
 .lp-devices button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--mut); padding: 8px 16px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; }
 .lp-devices button .ico { width: 18px; height: 18px; }
 .lp-devices button.on { background: var(--or); color: #07111F; }
-.lp-device-wrap { position: relative; display: grid; place-items: center; min-height: 470px; width: 100%; transition: transform .25s ease-out; }
+.lp-device-wrap { position: relative; display: grid; place-items: center; min-height: 470px; width: 100%; overflow: hidden; transition: transform .25s ease-out; }
 .lp-device-wrap > * { grid-area: 1 / 1; transition: opacity .45s ease, transform .45s ease; }
 .lp-device-wrap[data-device="phone"] .lp-browser { opacity: 0; transform: translateX(40px) scale(.94); pointer-events: none; }
 .lp-device-wrap[data-device="web"] .lp-phone { opacity: 0; transform: translateX(-40px) scale(.94); pointer-events: none; }
@@ -590,7 +590,8 @@ html.lp-active, html.lp-active body { background: #07111F; color-scheme: dark; }
 .lp-blist em, .lp-brow em { display: block; height: 100%; width: var(--w); border-radius: 6px; background: var(--c, var(--or)); transition: width .8s ease; }
 .lp-blist b { text-align: right; font-weight: 600; }
 .lp-brow { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.04); margin-bottom: 6px; font-size: .9rem; }
-.lp-brow small { float: right; color: var(--sub); font-size: .74rem; }
+.lp-brow > span { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.lp-brow small { color: var(--sub); font-size: .74rem; white-space: nowrap; }
 .lp-screen.in > .lp-brow { animation: lpIn .45s both; animation-delay: calc(var(--i, 0) * 70ms + 120ms); }
 .lp-sec-head { grid-column: 1 / -1; text-align: center; margin-bottom: 6px; }
 .lp-sec-head h2 { font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 700; margin: 0; }
