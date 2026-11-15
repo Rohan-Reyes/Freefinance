@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material.icons.rounded.Add
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -243,11 +247,10 @@ fun HomeScreenWidgetsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "TOTAL NET WORTH",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF9E9EB2),
-                                letterSpacing = 1.sp
+                                text = "Total net worth",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF9E9EB2)
                             )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -331,10 +334,10 @@ fun HomeScreenWidgetsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            WidgetActionBtn(icon = "➕", label = "Log Entry", modifier = Modifier.weight(1f))
-                            WidgetActionBtn(icon = "📊", label = "Budgets", modifier = Modifier.weight(1f))
-                            WidgetActionBtn(icon = "📋", label = "Ledger", modifier = Modifier.weight(1f))
-                            WidgetActionBtn(icon = "👥", label = "Debts", modifier = Modifier.weight(1f))
+                            WidgetActionBtn(icon = Icons.Rounded.Add, label = "Log Entry", modifier = Modifier.weight(1f))
+                            WidgetActionBtn(icon = Icons.Rounded.PieChart, label = "Budgets", modifier = Modifier.weight(1f))
+                            WidgetActionBtn(icon = Icons.AutoMirrored.Rounded.ReceiptLong, label = "Ledger", modifier = Modifier.weight(1f))
+                            WidgetActionBtn(icon = Icons.Rounded.People, label = "Debts", modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -364,11 +367,10 @@ fun HomeScreenWidgetsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "MONTHLY BUDGET BURN",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFFB74D),
-                                letterSpacing = 1.sp
+                                text = "Monthly budget burn",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFFFB74D)
                             )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -448,11 +450,10 @@ fun HomeScreenWidgetsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "MONTHLY SPENDING",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFCE93D8),
-                                letterSpacing = 1.sp
+                                text = "Monthly spending",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFCE93D8)
                             )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -555,7 +556,7 @@ fun HomeScreenWidgetsScreen(
                 WidgetPreviewItemCard(
                     title = "Compact Net Worth (2×2)",
                     gridSize = "2 × 2 Square",
-                    description = "Compact square widget with live Net Worth, 1-tap 📷 Quick Pic to snap receipts, and + Log for manual entry.",
+                    description = "Compact square widget with live Net Worth, 1-tap Quick Pic to snap receipts, and + Log for manual entry.",
                     icon = Icons.Default.TouchApp,
                     accentColor = Color(0xFF448AFF),
                     onPinClick = {
@@ -619,7 +620,7 @@ fun HomeScreenWidgetsScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = "📷 Quick Pic",
+                                    text = "Quick Pic",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF38BDF8),
@@ -766,7 +767,7 @@ fun HomeScreenWidgetsScreen(
                                         modifier = Modifier.padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text("➕", fontSize = 13.sp)
+                                        Icon(Icons.Rounded.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Text("Log", style = MaterialTheme.typography.labelSmall, color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                     }
                                 }
@@ -779,7 +780,7 @@ fun HomeScreenWidgetsScreen(
                                         modifier = Modifier.padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text("📊", fontSize = 13.sp)
+                                        Icon(Icons.Rounded.PieChart, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Text("Budgets", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFB74D), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                     }
                                 }
@@ -797,7 +798,7 @@ fun HomeScreenWidgetsScreen(
                                         modifier = Modifier.padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text("📋", fontSize = 13.sp)
+                                        Icon(Icons.AutoMirrored.Rounded.ReceiptLong, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Text("Ledger", style = MaterialTheme.typography.labelSmall, color = Color(0xFF82B1FF), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                     }
                                 }
@@ -810,7 +811,7 @@ fun HomeScreenWidgetsScreen(
                                         modifier = Modifier.padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text("👥", fontSize = 13.sp)
+                                        Icon(Icons.Rounded.People, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Text("Debts", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCE93D8), fontWeight = FontWeight.Bold, fontSize = 9.sp)
                                     }
                                 }
@@ -825,7 +826,7 @@ fun HomeScreenWidgetsScreen(
                 Card(
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1030,7 +1031,7 @@ private fun WidgetCardContainer(
 
 @Composable
 private fun WidgetActionBtn(
-    icon: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     modifier: Modifier = Modifier
 ) {
@@ -1046,7 +1047,7 @@ private fun WidgetActionBtn(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(text = icon, fontSize = 14.sp)
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,

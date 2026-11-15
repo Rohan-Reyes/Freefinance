@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
+import com.example.ui.theme.FinWarning
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -194,7 +197,7 @@ private val PALETTE_COLORS = listOf(
     Color(0xFFFF5722),
     Color(0xFF2196F3),
     Color(0xFF4CAF50),
-    Color(0xFFFF9800),
+    FinWarning,
     Color(0xFF9C27B0),
     Color(0xFF00BCD4),
     Color(0xFFE91E63),
@@ -235,7 +238,7 @@ fun ExpenseCategoryVisualizerTab(
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -246,11 +249,10 @@ fun ExpenseCategoryVisualizerTab(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "EXPENSE BREAKDOWN",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Expense breakdown",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -327,11 +329,10 @@ fun ExpenseCategoryVisualizerTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "CATEGORY BREAKDOWN",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    text = "Category breakdown",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "${expenses.size} tracked",
@@ -490,8 +491,8 @@ fun BudgetManagementTab(
                 )
 
                 val indicatorColor = when {
-                    isOverBudget -> Color(0xFFFF3B30)
-                    ratio > 0.8 -> Color(0xFFFF9500)
+                    isOverBudget -> FinNegative
+                    ratio > 0.8 -> FinWarning
                     else -> MaterialTheme.colorScheme.primary
                 }
 
@@ -600,7 +601,7 @@ fun BudgetManagementTab(
                                         Icon(
                                             imageVector = Icons.Default.Warning,
                                             contentDescription = null,
-                                            tint = Color(0xFFFF3B30),
+                                            tint = FinNegative,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -608,7 +609,7 @@ fun BudgetManagementTab(
                                             text = "Over by " + CurrencyUtils.formatCurrency(-progress.remainingAmount, currencyCode),
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFFF3B30)
+                                            color = FinNegative
                                         )
                                     }
                                 } else {
@@ -616,7 +617,7 @@ fun BudgetManagementTab(
                                         text = CurrencyUtils.formatCurrency(progress.remainingAmount, currencyCode) + " left",
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF00C853)
+                                        color = FinPositive
                                     )
                                 }
                                 Text(

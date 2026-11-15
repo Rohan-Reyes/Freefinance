@@ -4,6 +4,10 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -225,8 +229,53 @@ fun MyApplicationTheme(
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (themePreset == AppThemePreset.MATERIAL_YOU) colorScheme else colorScheme.withTonalSurfaces(darkTheme),
         typography = Typography,
+        shapes = FinanceShapes,
         content = content
+    )
+}
+
+/** One corner-radius scale for every card, sheet, chip and button. */
+val FinanceShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
+/**
+ * The palettes only define a few colours; Material 3 falls back to its default (purple-grey) tones for
+ * surface containers and outlines, which made panels look mismatched. Derive every container tone from
+ * the palette's own surface, lightly tinted with its primary colour, so all panels share one family.
+ */
+private fun ColorScheme.withTonalSurfaces(dark: Boolean): ColorScheme {
+    fun tone(lift: Float, tint: Float): Color {
+        val lifted = (if (dark) Color.White else Color.Black).copy(alpha = lift).compositeOver(surface)
+        return primary.copy(alpha = tint).compositeOver(lifted)
+    }
+    return if (dark) copy(
+        surfaceContainerLowest = tone(0.00f, 0.00f),
+        surfaceContainerLow = tone(0.035f, 0.02f),
+        surfaceContainer = tone(0.055f, 0.03f),
+        surfaceContainerHigh = tone(0.08f, 0.04f),
+        surfaceContainerHighest = tone(0.11f, 0.05f),
+        surfaceBright = tone(0.14f, 0.05f),
+        surfaceDim = surface,
+        outline = onSurface.copy(alpha = 0.32f).compositeOver(surface),
+        outlineVariant = onSurface.copy(alpha = 0.12f).compositeOver(surface),
+        surfaceTint = primary
+    ) else copy(
+        surfaceContainerLowest = Color.White,
+        surfaceContainerLow = tone(0.015f, 0.015f),
+        surfaceContainer = tone(0.03f, 0.025f),
+        surfaceContainerHigh = tone(0.045f, 0.035f),
+        surfaceContainerHighest = tone(0.06f, 0.045f),
+        surfaceBright = Color.White,
+        surfaceDim = tone(0.08f, 0.03f),
+        outline = onSurface.copy(alpha = 0.38f).compositeOver(surface),
+        outlineVariant = onSurface.copy(alpha = 0.12f).compositeOver(surface),
+        surfaceTint = primary
     )
 }

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -412,11 +414,10 @@ fun AssetsHeroValuationCard(
             ) {
                 Column {
                     Text(
-                        text = "TOTAL VALUABLES WORTH",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Total valuables worth",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -451,14 +452,14 @@ fun AssetsHeroValuationCard(
                     Icon(
                         imageVector = if (isGain) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                         contentDescription = null,
-                        tint = if (isGain) Color(0xFF2E7D32) else Color(0xFFD32F2F),
+                        tint = if (isGain) FinPositive else FinNegative,
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
                         text = "${if (isGain) "+" else ""}${CurrencyUtils.formatCurrency(gainLossAmount, baseCurrency, hideMoney)} (${String.format(Locale.getDefault(), "%.1f", gainLossPercentage)}%) vs purchase cost",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isGain) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                        color = if (isGain) FinPositive else FinNegative
                     )
                 }
             }
@@ -650,14 +651,14 @@ fun AssetItemCard(
                         Icon(
                             imageVector = if (isGain) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                             contentDescription = null,
-                            tint = if (isGain) Color(0xFF2E7D32) else Color(0xFFD32F2F),
+                            tint = if (isGain) FinPositive else FinNegative,
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = "${if (isGain) "+" else ""}${String.format(Locale.getDefault(), "%.1f", percent)}% (${CurrencyUtils.formatCurrency(diff, asset.currencyCode, hideMoney)})",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (isGain) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                            color = if (isGain) FinPositive else FinNegative
                         )
                     }
                 } else {
@@ -716,7 +717,7 @@ fun AssetsEmptyStateCard(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
     ) {

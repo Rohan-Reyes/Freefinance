@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinInfo
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -177,7 +180,7 @@ fun RecordsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Master Records Ledger", fontWeight = FontWeight.Bold) },
+                title = { Text("Records", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -362,7 +365,7 @@ fun RecordsScreen(
                                         ),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (netDay >= 0) Color(0xFF00C853) else Color(0xFFFF3B30)
+                                        color = if (netDay >= 0) FinPositive else FinNegative
                                     )
                                 }
                             }
@@ -472,9 +475,9 @@ fun MasterRecordItemRow(
 
     val amountColor = remember(isIncome, isExpense) {
         when {
-            isIncome -> Color(0xFF00C853)
-            isExpense -> Color(0xFFFF3B30)
-            else -> Color(0xFF1976D2)
+            isIncome -> FinPositive
+            isExpense -> FinNegative
+            else -> FinInfo
         }
     }
 
@@ -626,43 +629,15 @@ fun MasterRecordItemRow(
                 }
             }
 
-            // Amount & Edit / Delete action
+            // Amount (tap the row to edit or delete)
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = formattedAmount,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
                     color = amountColor
                 )
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
             }
         }
     }

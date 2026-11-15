@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinPositive
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -239,7 +240,7 @@ private fun ProjectCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -303,7 +304,7 @@ private fun ProjectCard(
                 Text(
                     text = "Paid: " + CurrencyUtils.formatCurrency(totalPaid, currencyCode) + " ($percentInt%)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF00C853),
+                    color = FinPositive,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
@@ -321,7 +322,7 @@ private fun ProjectCard(
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp)),
-                color = Color(0xFF00C853),
+                color = FinPositive,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
@@ -402,14 +403,14 @@ private fun MilestoneItemRow(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(
-                        if (isPaid) Color(0xFF00C853).copy(alpha = 0.15f) else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                        if (isPaid) FinPositive.copy(alpha = 0.15f) else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (isPaid) Icons.Default.CheckCircle else Icons.Default.Schedule,
                     contentDescription = null,
-                    tint = if (isPaid) Color(0xFF00C853) else MaterialTheme.colorScheme.tertiary,
+                    tint = if (isPaid) FinPositive else MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -441,7 +442,7 @@ private fun MilestoneItemRow(
                 text = CurrencyUtils.formatCurrency(milestone.amount, currencyCode),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isPaid) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurface
+                color = if (isPaid) FinPositive else MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -459,7 +460,7 @@ private fun MilestoneItemRow(
                 Button(
                     onClick = onMarkPaid,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                    colors = ButtonDefaults.buttonColors(containerColor = FinPositive),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     modifier = Modifier.height(30.dp)
                 ) {

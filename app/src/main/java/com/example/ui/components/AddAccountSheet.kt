@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.ui.theme.FinWarning
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -119,7 +120,7 @@ fun AddAccountSheet(
     val presetColors = listOf(
         Color(0xFF2196F3), // Blue
         Color(0xFF4CAF50), // Green
-        Color(0xFFFF9800), // Orange
+        FinWarning, // Orange
         Color(0xFF9C27B0), // Purple
         Color(0xFF009688), // Teal
         Color(0xFFE91E63)  // Pink
@@ -785,7 +786,7 @@ fun AddAccountSheet(
             OutlinedCard(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.outlinedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {

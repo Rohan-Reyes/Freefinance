@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
+import com.example.ui.theme.FinWarning
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -564,7 +567,7 @@ private fun CalendarHeatmapTab(
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -579,7 +582,7 @@ private fun CalendarHeatmapTab(
                         Text(
                             text = "+${CurrencyUtils.formatCurrency(monthIncome, baseCurrency)}",
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00C853),
+                            color = FinPositive,
                             style = MaterialTheme.typography.titleSmall
                         )
                     }
@@ -597,7 +600,7 @@ private fun CalendarHeatmapTab(
                         Text(
                             text = (if (netSavings >= 0) "+" else "") + CurrencyUtils.formatCurrency(netSavings, baseCurrency),
                             fontWeight = FontWeight.Bold,
-                            color = if (netSavings >= 0) Color(0xFF00C853) else MaterialTheme.colorScheme.error,
+                            color = if (netSavings >= 0) FinPositive else MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.titleSmall
                         )
                     }
@@ -632,13 +635,13 @@ private fun CalendarHeatmapTab(
                             fontWeight = FontWeight.Bold
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF00C853)))
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(FinPositive))
                             Text("In", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error))
                             Text("Out", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF7C4DFF)))
                             Text("Milestone", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF9800)))
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(FinWarning))
                             Text("Debt", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -699,9 +702,9 @@ private fun CalendarHeatmapTab(
                                                     isSelected -> MaterialTheme.colorScheme.primaryContainer
                                                     hasExpense -> MaterialTheme.colorScheme.error.copy(alpha = heatAlpha)
                                                     hasFreelance -> Color(0xFF7C4DFF).copy(alpha = 0.2f)
-                                                    hasIncome -> Color(0xFF00C853).copy(alpha = 0.2f)
+                                                    hasIncome -> FinPositive.copy(alpha = 0.2f)
                                                     hasRecurring -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                                    hasDebts -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                                                    hasDebts -> FinWarning.copy(alpha = 0.15f)
                                                     else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                                                 }
                                             )
@@ -738,7 +741,7 @@ private fun CalendarHeatmapTab(
                                                         modifier = Modifier
                                                             .size(4.dp)
                                                             .clip(CircleShape)
-                                                            .background(Color(0xFF00C853))
+                                                            .background(FinPositive)
                                                     )
                                                 }
                                                 if (hasFreelance) {
@@ -762,7 +765,7 @@ private fun CalendarHeatmapTab(
                                                         modifier = Modifier
                                                             .size(4.dp)
                                                             .clip(CircleShape)
-                                                            .background(Color(0xFFFF9800))
+                                                            .background(FinWarning)
                                                     )
                                                 }
                                             }
@@ -783,7 +786,7 @@ private fun CalendarHeatmapTab(
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -879,14 +882,14 @@ private fun CalendarHeatmapTab(
                                 text = "Expected Debt Payouts / Due Dates",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFFF9800),
+                                color = FinWarning,
                                 modifier = if (selectedDayFreelance.isNotEmpty()) Modifier.padding(top = 4.dp) else Modifier
                             )
                             selectedDayDebts.forEach { debt ->
                                 val isLent = debt.type.equals("Lent", ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isLent) Color(0xFF00C853).copy(alpha = 0.12f) else MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                                    color = if (isLent) FinPositive.copy(alpha = 0.12f) else MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -913,7 +916,7 @@ private fun CalendarHeatmapTab(
                                             text = (if (isLent) "+" else "-") + CurrencyUtils.formatCurrency(debt.remainingAmount, baseCurrency),
                                             fontWeight = FontWeight.ExtraBold,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = if (isLent) Color(0xFF00C853) else MaterialTheme.colorScheme.error
+                                            color = if (isLent) FinPositive else MaterialTheme.colorScheme.error
                                         )
                                     }
                                 }
@@ -937,7 +940,7 @@ private fun CalendarHeatmapTab(
 
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isIncome) Color(0xFF00C853).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                    color = if (isIncome) FinPositive.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -964,7 +967,7 @@ private fun CalendarHeatmapTab(
                                             text = (if (isIncome) "+" else "-") + CurrencyUtils.formatCurrency(bill.amount, baseCurrency),
                                             fontWeight = FontWeight.ExtraBold,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = if (isIncome) Color(0xFF00C853) else MaterialTheme.colorScheme.primary
+                                            color = if (isIncome) FinPositive else MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -1016,7 +1019,7 @@ private fun CalendarHeatmapTab(
                                                     CurrencyUtils.formatCurrency(tx.amount, baseCurrency),
                                             fontWeight = FontWeight.ExtraBold,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = if (tx.type == TransactionType.INCOME.displayName) Color(0xFF00C853) else MaterialTheme.colorScheme.error
+                                            color = if (tx.type == TransactionType.INCOME.displayName) FinPositive else MaterialTheme.colorScheme.error
                                         )
                                     }
                                 }
@@ -1244,7 +1247,7 @@ private fun CashflowForecastTab(
                                 Text(
                                     text = CurrencyUtils.formatCurrency(safeDailyAllowance, baseCurrency),
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF00C853),
+                                    color = FinPositive,
                                     style = MaterialTheme.typography.titleMedium
                                 )
                             }
@@ -1303,7 +1306,7 @@ private fun CashflowForecastTab(
                             Text(
                                 text = "$ratio%",
                                 fontWeight = FontWeight.Bold,
-                                color = if (ratio > 100) MaterialTheme.colorScheme.error else Color(0xFF00C853)
+                                color = if (ratio > 100) MaterialTheme.colorScheme.error else FinPositive
                             )
                         }
 
@@ -1312,7 +1315,7 @@ private fun CashflowForecastTab(
                                 if (safeDailyAllowance > 0) min(1f, (dailyBurnRate / safeDailyAllowance).toFloat()) else 1f
                             },
                             modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                            color = if (dailyBurnRate > safeDailyAllowance) MaterialTheme.colorScheme.error else Color(0xFF00C853),
+                            color = if (dailyBurnRate > safeDailyAllowance) MaterialTheme.colorScheme.error else FinPositive,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                     }
@@ -1332,7 +1335,7 @@ private fun CashflowForecastTab(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Remaining Recurring Inflows (Allowance/Salary)", style = MaterialTheme.typography.bodyMedium)
-                            Text("+${CurrencyUtils.formatCurrency(remainingMonthRecurringIncome, baseCurrency)}", fontWeight = FontWeight.Bold, color = Color(0xFF00C853))
+                            Text("+${CurrencyUtils.formatCurrency(remainingMonthRecurringIncome, baseCurrency)}", fontWeight = FontWeight.Bold, color = FinPositive)
                         }
                     }
 
@@ -1362,7 +1365,7 @@ private fun CashflowForecastTab(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Expected Payouts (Lent to others)", style = MaterialTheme.typography.bodyMedium)
-                            Text("+${CurrencyUtils.formatCurrency(totalExpectedDebtReceivable, baseCurrency)}", fontWeight = FontWeight.Bold, color = Color(0xFF00C853))
+                            Text("+${CurrencyUtils.formatCurrency(totalExpectedDebtReceivable, baseCurrency)}", fontWeight = FontWeight.Bold, color = FinPositive)
                         }
                     }
 
@@ -1382,7 +1385,7 @@ private fun CashflowForecastTab(
                     ) {
                         Text("Unallocated Discretionary Fund", style = MaterialTheme.typography.bodyMedium)
                         val disc = max(0.0, totalLiquidBalance + remainingMonthRecurringIncome - remainingMonthRecurringExpense - totalExpectedDebtPayable)
-                        Text(CurrencyUtils.formatCurrency(disc, baseCurrency), fontWeight = FontWeight.Bold, color = Color(0xFF00C853))
+                        Text(CurrencyUtils.formatCurrency(disc, baseCurrency), fontWeight = FontWeight.Bold, color = FinPositive)
                     }
                 }
             }
@@ -1430,7 +1433,7 @@ private fun CategoryVarianceTab(
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1520,14 +1523,14 @@ private fun CategoryVarianceTab(
                                     Icon(
                                         imageVector = if (deltaAmount > 0) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                                         contentDescription = null,
-                                        tint = if (deltaAmount > 0) MaterialTheme.colorScheme.error else Color(0xFF2E7D32),
+                                        tint = if (deltaAmount > 0) MaterialTheme.colorScheme.error else FinPositive,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
                                         text = (if (deltaAmount > 0) "+" else "") + String.format(Locale.getDefault(), "%.1f%%", percentDelta),
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (deltaAmount > 0) MaterialTheme.colorScheme.error else Color(0xFF2E7D32)
+                                        color = if (deltaAmount > 0) MaterialTheme.colorScheme.error else FinPositive
                                     )
                                 }
                             }
@@ -1601,10 +1604,10 @@ private fun FinancialHealthScoreTab(
     val totalScore = min(100, savingsScore + budgetScore + emergencyScore + debtScore)
 
     val (scoreGrade, scoreColor) = when {
-        totalScore >= 85 -> "Excellent" to Color(0xFF00C853)
-        totalScore >= 70 -> "Good" to Color(0xFF43A047)
+        totalScore >= 85 -> "Excellent" to FinPositive
+        totalScore >= 70 -> "Good" to FinPositive
         totalScore >= 50 -> "Fair" to Color(0xFFFFA000)
-        else -> "Needs Attention" to Color(0xFFE53935)
+        else -> "Needs Attention" to FinNegative
     }
 
     LazyColumn(
@@ -1695,7 +1698,7 @@ private fun FinancialHealthScoreTab(
                         title = "Savings Rate (${String.format(Locale.getDefault(), "%.1f%%", savingsRate)})",
                         score = savingsScore,
                         maxScore = 30,
-                        color = Color(0xFF00C853)
+                        color = FinPositive
                     )
 
                     // 2. Budget Discipline
@@ -1711,7 +1714,7 @@ private fun FinancialHealthScoreTab(
                         title = "Emergency Runway (${String.format(Locale.getDefault(), "%.1f", monthsRunway)} mos)",
                         score = emergencyScore,
                         maxScore = 25,
-                        color = Color(0xFFFF9800)
+                        color = FinWarning
                     )
 
                     // 4. Debt-to-Asset
@@ -1730,7 +1733,7 @@ private fun FinancialHealthScoreTab(
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1744,7 +1747,7 @@ private fun FinancialHealthScoreTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Lightbulb, contentDescription = null, tint = Color(0xFFFFB300))
+                        Icon(Icons.Default.Lightbulb, contentDescription = null, tint = FinWarning)
                         Text(
                             text = "Smart Financial Recommendations",
                             style = MaterialTheme.typography.titleSmall,

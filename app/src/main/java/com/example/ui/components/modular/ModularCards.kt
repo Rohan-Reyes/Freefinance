@@ -1,5 +1,7 @@
 package com.example.ui.components.modular
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -156,11 +158,10 @@ fun BalanceCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "TOTAL LIQUID BALANCE",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isGradient) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                            letterSpacing = 1.2.sp
+                            text = "Total liquid balance",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isGradient) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )
                     }
 
@@ -246,7 +247,7 @@ fun MoneyFlowCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -263,11 +264,10 @@ fun MoneyFlowCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "MONEY FLOW BREAKDOWN",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    text = "Money flow breakdown",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = String.format(
@@ -278,7 +278,7 @@ fun MoneyFlowCard(
                     ),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (moneyFlow.netCashFlow >= 0) Color(0xFF00C853) else Color(0xFFD50000)
+                    color = if (moneyFlow.netCashFlow >= 0) FinPositive else FinNegative
                 )
             }
 
@@ -287,8 +287,8 @@ fun MoneyFlowCard(
             // Income / Expense Gauge Bar
             ClipSplitProgressBar(
                 leftRatio = incomePercent,
-                leftColor = Color(0xFF00C853),
-                rightColor = Color(0xFFFF5252),
+                leftColor = FinPositive,
+                rightColor = FinNegative,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(10.dp)
@@ -305,13 +305,13 @@ fun MoneyFlowCard(
                     Box(
                         modifier = Modifier
                             .size(28.dp)
-                            .background(Color(0xFF00C853).copy(alpha = 0.15f), CircleShape),
+                            .background(FinPositive.copy(alpha = 0.15f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.ArrowDownward,
                             contentDescription = null,
-                            tint = Color(0xFF00C853),
+                            tint = FinPositive,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -326,7 +326,7 @@ fun MoneyFlowCard(
                             text = "+" + CurrencyUtils.formatCurrency(moneyFlow.totalIncome, currencyCode),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00C853)
+                            color = FinPositive
                         )
                     }
                 }
@@ -336,13 +336,13 @@ fun MoneyFlowCard(
                     Box(
                         modifier = Modifier
                             .size(28.dp)
-                            .background(Color(0xFFFF5252).copy(alpha = 0.15f), CircleShape),
+                            .background(FinNegative.copy(alpha = 0.15f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.ArrowUpward,
                             contentDescription = null,
-                            tint = Color(0xFFFF5252),
+                            tint = FinNegative,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -357,7 +357,7 @@ fun MoneyFlowCard(
                             text = "-" + CurrencyUtils.formatCurrency(moneyFlow.totalExpense, currencyCode),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF5252)
+                            color = FinNegative
                         )
                     }
                 }
@@ -426,7 +426,7 @@ fun BudgetPercentCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -453,7 +453,7 @@ fun BudgetPercentCard(
                 CircularProgressIndicator(
                     progress = { animatedProgress },
                     modifier = Modifier.fillMaxSize(),
-                    color = if (isOverBudget) Color(0xFFD50000) else if (ratio > 0.8f) Color(0xFFFF9100) else MaterialTheme.colorScheme.primary,
+                    color = if (isOverBudget) FinNegative else if (ratio > 0.8f) Color(0xFFFF9100) else MaterialTheme.colorScheme.primary,
                     strokeWidth = 7.dp,
                     trackColor = Color.Transparent,
                     strokeCap = StrokeCap.Round
@@ -469,11 +469,10 @@ fun BudgetPercentCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "MONTHLY BUDGET HEALTH",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    text = "Monthly budget health",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -488,7 +487,7 @@ fun BudgetPercentCard(
                     else if (isOverBudget) "Over budget by ${CurrencyUtils.formatCurrency(totalSpent - totalBudget, currencyCode)}!"
                     else "Remaining: ${CurrencyUtils.formatCurrency(totalBudget - totalSpent, currencyCode)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isOverBudget) Color(0xFFD50000) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isOverBudget) FinNegative else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -510,7 +509,7 @@ fun DebtSummaryCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -537,11 +536,10 @@ fun DebtSummaryCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "RECEIVABLES (OWED TO ME)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Receivables (owed to me)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -602,7 +600,7 @@ fun DebtSummaryCard(
                                 text = CurrencyUtils.formatCurrency(debt.remainingAmount, currencyCode),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00C853)
+                                color = FinPositive
                             )
                         }
                     }
@@ -629,7 +627,7 @@ fun LiquidVsLockedCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -656,11 +654,10 @@ fun LiquidVsLockedCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "LIQUID VS LOCKED FUNDS",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Liquid vs locked funds",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -794,7 +791,7 @@ fun ProjectTrackerCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -821,7 +818,7 @@ fun ProjectTrackerCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "TOP INITIATIVE: #${projectState.labelName}",
+                        text = "Top initiative: #${projectState.labelName}",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -859,7 +856,7 @@ fun ProjectTrackerCard(
                         ),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (projectState.netBalance >= 0) Color(0xFF00C853) else Color(0xFFD50000)
+                        color = if (projectState.netBalance >= 0) FinPositive else FinNegative
                     )
                 }
 
@@ -895,7 +892,7 @@ fun LongTermExpectedCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -917,11 +914,10 @@ fun LongTermExpectedCard(
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    text = "LONG-TERM EXPECTED INFLOWS",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    text = "Long-term expected inflows",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -960,7 +956,7 @@ fun LongTermExpectedCard(
                                 text = "+" + CurrencyUtils.formatCurrency(item.amount, currencyCode),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00C853)
+                                color = FinPositive
                             )
                         }
                     }
@@ -987,7 +983,7 @@ fun WeeklyForecastCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1014,11 +1010,10 @@ fun WeeklyForecastCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "7-DAY WEEKLY FORECAST",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "7-DAY weekly forecast",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1031,14 +1026,14 @@ fun WeeklyForecastCard(
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isUp) Color(0xFF00C853) else Color(0xFFD50000)
+                    color = if (isUp) FinPositive else FinNegative
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             // Zero-allocation Cached Sparkline
-            val lineColor = if (isUp) Color(0xFF00C853) else Color(0xFFFF5252)
+            val lineColor = if (isUp) FinPositive else FinNegative
 
             Box(
                 modifier = Modifier
@@ -1119,7 +1114,7 @@ fun UpcomingBillsCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1146,11 +1141,10 @@ fun UpcomingBillsCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "UPCOMING BILLS & SUBS",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Upcoming bills & subs",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1215,7 +1209,7 @@ fun UpcomingBillsCard(
                                 text = "-" + CurrencyUtils.formatCurrency(bill.amount, currencyCode),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFF5252)
+                                color = FinNegative
                             )
                         }
                     }
@@ -1241,7 +1235,7 @@ fun SpendingCategoriesCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1268,11 +1262,10 @@ fun SpendingCategoriesCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "TOP SPENDING CATEGORIES",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Top spending categories",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1363,7 +1356,7 @@ fun SavingsRateCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1379,7 +1372,7 @@ fun SavingsRateCard(
                 modifier = Modifier
                     .size(52.dp)
                     .background(
-                        if (isPositive) Color(0xFF00C853).copy(alpha = 0.15f) else Color(0xFFFF5252).copy(alpha = 0.15f),
+                        if (isPositive) FinPositive.copy(alpha = 0.15f) else FinNegative.copy(alpha = 0.15f),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -1387,7 +1380,7 @@ fun SavingsRateCard(
                 Icon(
                     imageVector = Icons.Default.Savings,
                     contentDescription = null,
-                    tint = if (isPositive) Color(0xFF00C853) else Color(0xFFFF5252),
+                    tint = if (isPositive) FinPositive else FinNegative,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -1396,18 +1389,17 @@ fun SavingsRateCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "CURRENT SAVINGS RATE",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
+                    text = "Current savings rate",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = String.format(Locale.getDefault(), "%.1f%% of Income Saved", rate),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
-                    color = if (isPositive) Color(0xFF00C853) else Color(0xFFFF5252)
+                    color = if (isPositive) FinPositive else FinNegative
                 )
                 Text(
                     text = if (moneyFlow.totalIncome == 0.0) "Log income to track personal savings rate"
@@ -1434,7 +1426,7 @@ fun MonthlySpendingTrendsCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1468,11 +1460,10 @@ fun MonthlySpendingTrendsCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "MONTHLY SPENDING TRENDS",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
+                            text = "Monthly spending trends",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Spacer(modifier = Modifier.height(2.dp))
@@ -1488,7 +1479,7 @@ fun MonthlySpendingTrendsCard(
                     val isReduced = expenseDelta <= 0
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isReduced) Color(0xFF00C853).copy(alpha = 0.15f) else Color(0xFFFF5252).copy(alpha = 0.15f)
+                        color = if (isReduced) FinPositive.copy(alpha = 0.15f) else FinNegative.copy(alpha = 0.15f)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1498,7 +1489,7 @@ fun MonthlySpendingTrendsCard(
                             Icon(
                                 imageVector = if (isReduced) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
                                 contentDescription = null,
-                                tint = if (isReduced) Color(0xFF00C853) else Color(0xFFFF5252),
+                                tint = if (isReduced) FinPositive else FinNegative,
                                 modifier = Modifier.size(14.dp)
                             )
                             val pct = (kotlin.math.abs(expenseDelta) / prevMonthExpense) * 100
@@ -1506,7 +1497,7 @@ fun MonthlySpendingTrendsCard(
                                 text = String.format(Locale.getDefault(), "%.0f%% vs last mo", pct),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isReduced) Color(0xFF00C853) else Color(0xFFFF5252)
+                                color = if (isReduced) FinPositive else FinNegative
                             )
                         }
                     }
@@ -1620,7 +1611,7 @@ fun PlannedPayoutsCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
@@ -1647,11 +1638,10 @@ fun PlannedPayoutsCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "PLANNED PAYOUTS",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Planned payouts",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1690,7 +1680,7 @@ fun PlannedPayoutsCard(
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF00C853),
+                            tint = FinPositive,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
@@ -1741,11 +1731,11 @@ fun PlannedPayoutsCard(
                                         if (payout.priority == "HIGH") {
                                             Surface(
                                                 shape = RoundedCornerShape(4.dp),
-                                                color = Color(0xFFFF5252).copy(alpha = 0.15f)
+                                                color = FinNegative.copy(alpha = 0.15f)
                                             ) {
                                                 Text(
                                                     text = "HIGH",
-                                                    color = Color(0xFFFF5252),
+                                                    color = FinNegative,
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -1757,7 +1747,7 @@ fun PlannedPayoutsCard(
                                     Text(
                                         text = dueLabel + (if (!payout.payeeOrVendor.isNullOrBlank()) " • ${payout.payeeOrVendor}" else ""),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (isOverdue) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isOverdue) FinNegative else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
 

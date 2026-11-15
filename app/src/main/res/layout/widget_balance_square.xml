@@ -85,7 +85,10 @@
             android:gravity="center"
             android:paddingHorizontal="4dp"
             android:paddingVertical="7dp"
-            android:text="📷 Quick Pic"
+            android:text="Quick Pic"
+            android:drawableStart="@drawable/ic_w_camera"
+            android:drawablePadding="4dp"
+            android:drawableTint="#38BDF8"
             android:textColor="#38BDF8"
             android:textSize="10sp"
             android:textStyle="bold" />

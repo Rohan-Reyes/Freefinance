@@ -18,11 +18,12 @@
         android:orientation="vertical"
         android:padding="6dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="➕"
-            android:textSize="16sp" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_w_add"
+            android:tint="#FFFFFF" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -48,11 +49,12 @@
         android:orientation="vertical"
         android:padding="6dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📊"
-            android:textSize="16sp" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_w_budget"
+            android:tint="#FFFFFF" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -78,11 +80,12 @@
         android:orientation="vertical"
         android:padding="6dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📋"
-            android:textSize="16sp" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_w_ledger"
+            android:tint="#FFFFFF" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -108,11 +111,12 @@
         android:orientation="vertical"
         android:padding="6dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="👥"
-            android:textSize="16sp" />
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_w_people"
+            android:tint="#FFFFFF" />
 
         <TextView
             android:layout_width="wrap_content"

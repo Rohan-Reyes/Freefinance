@@ -1,5 +1,23 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinPositive
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.LocalCafe
+import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.CurrencyExchange
+import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -124,12 +142,12 @@ import java.util.Date
 import java.util.Locale
 
 private enum class SettingsSectionFilter(val label: String, val icon: ImageVector) {
-    ALL("All Settings", Icons.Default.Tune),
-    SECURITY("Biometrics & Security", Icons.Default.Fingerprint),
-    APPEARANCE("Appearance", Icons.Default.Palette),
-    CURRENCY("Currency & FX", Icons.Default.CurrencyExchange),
-    DATA_SYNC("Vault & Sync", Icons.Default.CloudUpload),
-    SYSTEM("System & Info", Icons.Default.VerifiedUser)
+    ALL("All", Icons.Rounded.Tune),
+    APPEARANCE("Appearance", Icons.Rounded.Palette),
+    SECURITY("Security", Icons.Rounded.Fingerprint),
+    CURRENCY("Currency", Icons.Rounded.CurrencyExchange),
+    DATA_SYNC("Data & sync", Icons.Rounded.CloudSync),
+    SYSTEM("About", Icons.Rounded.Info)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -227,18 +245,11 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Settings & Control Studio",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "${appThemePreset.title} • ${uiState.baseCurrency} Engine",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 navigationIcon = {
                     IconButton(
@@ -270,26 +281,9 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // -------------------------------------------------------------
-            // HERO PREVIEW & QUICK CONTROLS BANNER
-            // -------------------------------------------------------------
-            item(key = "SETTINGS_HERO_PREVIEW") {
-                SettingsLivePreviewHeroCard(
-                    totalBalance = uiState.totalBalance,
-                    baseCurrency = uiState.baseCurrency,
-                    accountCount = uiState.accounts.size,
-                    appThemePreset = appThemePreset,
-                    heroBackgroundStyle = heroBackgroundStyle,
-                    appThemeMode = appThemeMode,
-                    hideMoney = hideMoney,
-                    onThemeModeSelected = { viewModel.setAppThemeMode(it) },
-                    onToggleHideMoney = { viewModel.toggleHideMoney(!hideMoney) }
-                )
-            }
-
             // -------------------------------------------------------------
             // CATEGORY FILTER BAR
             // -------------------------------------------------------------
@@ -333,243 +327,58 @@ fun SettingsScreen(
             if (showAppearance) {
                 item(key = "HEADER_APPEARANCE") {
                     SettingsSectionHeader(
-                        title = "APPEARANCE & PERSONALIZATION",
-                        subtitle = "Palettes, hero card shaders, privacy & dashboard layout"
+                        title = "Appearance",
+                        subtitle = "Theme, colours and dashboard layout"
                     )
                 }
 
-                // App Theme Palette Grid (2-Column Compact Swatches)
+                // Theme: mode, palette and hero style in one compact card
                 item(key = "CARD_THEME_PRESETS") {
                     SettingsGroupCard {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            SettingsIconBadge(
-                                icon = Icons.Default.Palette,
-                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                contentColor = MaterialTheme.colorScheme.primary
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "App Theme Palette",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Select a signature color system across all screens",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AppThemePreset.entries.chunked(2).forEach { rowPresets ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Text("Theme mode", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            AppThemeMode.entries.forEachIndexed { index, mode ->
+                                SegmentedButton(
+                                    selected = appThemeMode == mode,
+                                    onClick = { viewModel.setAppThemeMode(mode) },
+                                    shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size)
                                 ) {
-                                    rowPresets.forEach { preset ->
-                                        val isSelected = appThemePreset == preset
-                                        val (c1, c2) = remember(preset) {
-                                            when (preset) {
-                                                AppThemePreset.MATERIAL_YOU -> Color(0xFF6750A4) to Color(0xFF00B4DB)
-                                                AppThemePreset.EMERALD_AURORA -> Color(0xFF00C853) to Color(0xFF00B4DB)
-                                                AppThemePreset.OCEAN_INDIGO -> Color(0xFF1E5BB0) to Color(0xFF00D2FF)
-                                                AppThemePreset.SUNSET_GLOW -> Color(0xFFE94057) to Color(0xFFF27121)
-                                                AppThemePreset.MIDNIGHT_NEBULA -> Color(0xFF7545A8) to Color(0xFFDEB7FF)
-                                                AppThemePreset.GOLDEN_LUXE -> Color(0xFFD76D77) to Color(0xFFFFAF7B)
-                                                AppThemePreset.CYBERPUNK_NEON -> Color(0xFFFF007F) to Color(0xFF00E5FF)
-                                                AppThemePreset.TITANIUM_SLATE -> Color(0xFF475569) to Color(0xFF94A3B8)
-                                            }
-                                        }
-
-                                        Surface(
-                                            onClick = { viewModel.setAppThemePreset(preset, syncHeroStyle = true) },
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = if (isSelected) {
-                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                                            } else {
-                                                MaterialTheme.colorScheme.surface
-                                            },
-                                            border = BorderStroke(
-                                                width = if (isSelected) 1.8.dp else 0.8.dp,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                                            ),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    // Dual-Tone Gradient Swatch Orb
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(width = 34.dp, height = 18.dp)
-                                                            .clip(RoundedCornerShape(9.dp))
-                                                            .background(Brush.horizontalGradient(listOf(c1, c2)))
-                                                    )
-
-                                                    if (isSelected) {
-                                                        Surface(
-                                                            shape = CircleShape,
-                                                            color = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.size(18.dp)
-                                                        ) {
-                                                            Box(contentAlignment = Alignment.Center) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.Check,
-                                                                    contentDescription = "Selected",
-                                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                                    modifier = Modifier.size(12.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                Text(
-                                                    text = preset.title,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-
-                                                Text(
-                                                    text = preset.description,
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (rowPresets.size == 1) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
+                                    Text(when (mode) { AppThemeMode.SYSTEM -> "System"; AppThemeMode.DARK -> "Dark"; AppThemeMode.LIGHT -> "Light" })
                                 }
                             }
                         }
-                    }
-                }
 
-                // Hero Card Atmosphere Shader Gallery
-                item(key = "CARD_HERO_SHADERS") {
-                    SettingsGroupCard {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Text("Colour palette", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(appThemePreset.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            SettingsIconBadge(
-                                icon = Icons.Default.AutoAwesome,
-                                containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.16f),
-                                contentColor = MaterialTheme.colorScheme.tertiary
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Hero Card Atmosphere",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Customize the Total Wealth hero banner shader",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            AppThemePreset.entries.forEach { preset ->
+                                val (c1, c2) = paletteSwatch(preset)
+                                SwatchOption(
+                                    label = preset.title.substringBefore(' ').ifBlank { preset.title },
+                                    brush = Brush.linearGradient(listOf(c1, c2)),
+                                    selected = appThemePreset == preset,
+                                    onClick = { viewModel.setAppThemePreset(preset, syncHeroStyle = true) }
                                 )
                             }
                         }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HeroBackgroundStyle.entries.chunked(2).forEach { rowStyles ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    rowStyles.forEach { style ->
-                                        val isSelected = heroBackgroundStyle == style
-                                        val previewBrush = when (style) {
-                                            HeroBackgroundStyle.SOLID -> Brush.linearGradient(
-                                                listOf(
-                                                    MaterialTheme.colorScheme.primaryContainer,
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                                )
-                                            )
-                                            HeroBackgroundStyle.GRADIENT -> Brush.linearGradient(
-                                                listOf(Color(0xFF1E3C72), Color(0xFF0072FF))
-                                            )
-                                            HeroBackgroundStyle.SUNSET_GLOW -> Brush.linearGradient(
-                                                listOf(Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121))
-                                            )
-                                            HeroBackgroundStyle.EMERALD_AURORA -> Brush.linearGradient(
-                                                listOf(Color(0xFF0575E6), Color(0xFF00F260))
-                                            )
-                                            HeroBackgroundStyle.MIDNIGHT_NEBULA -> Brush.linearGradient(
-                                                listOf(Color(0xFF200122), Color(0xFF9013FE))
-                                            )
-                                            HeroBackgroundStyle.GOLDEN_LUXE -> Brush.linearGradient(
-                                                listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B))
-                                            )
-                                        }
-
-                                        Surface(
-                                            onClick = { viewModel.setHeroBackgroundStyle(style) },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-                                            border = BorderStroke(
-                                                width = if (isSelected) 1.6.dp else 0.8.dp,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                                            ),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 10.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(22.dp)
-                                                        .clip(RoundedCornerShape(7.dp))
-                                                        .background(previewBrush)
-                                                )
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = style.title,
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                if (isSelected) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (rowStyles.size == 1) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Text("Balance card style", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            HeroBackgroundStyle.entries.forEach { style ->
+                                SwatchOption(
+                                    label = style.title.substringBefore(' '),
+                                    brush = heroSwatch(style, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary),
+                                    selected = heroBackgroundStyle == style,
+                                    onClick = { viewModel.setHeroBackgroundStyle(style) }
+                                )
                             }
                         }
                     }
@@ -699,8 +508,8 @@ fun SettingsScreen(
             if (showSecurity) {
                 item(key = "HEADER_SECURITY") {
                     SettingsSectionHeader(
-                        title = "BIOMETRICS & VAULT SECURITY",
-                        subtitle = "Fingerprint, Face Unlock & 4-digit fallback PIN"
+                        title = "Security",
+                        subtitle = "App lock, biometrics and PIN"
                     )
                 }
 
@@ -876,8 +685,8 @@ fun SettingsScreen(
             if (showCurrency) {
                 item(key = "HEADER_CURRENCY") {
                     SettingsSectionHeader(
-                        title = "MULTI-CURRENCY & FX ENGINE",
-                        subtitle = "Base currency conversion & custom override rates"
+                        title = "Currency",
+                        subtitle = "Base currency and exchange rates"
                     )
                 }
 
@@ -1076,8 +885,8 @@ fun SettingsScreen(
             if (showDataSync) {
                 item(key = "HEADER_DATA_SYNC") {
                     SettingsSectionHeader(
-                        title = "DATA VAULT, SYNC & INTEGRITY",
-                        subtitle = "Balance reconciliation, Google Drive backup & portable exports"
+                        title = "Data & sync",
+                        subtitle = "Server sync, backups and exports"
                     )
                 }
 
@@ -1099,12 +908,12 @@ fun SettingsScreen(
                                 containerColor = if (negativeAccountsCount > 0) {
                                     MaterialTheme.colorScheme.errorContainer
                                 } else {
-                                    Color(0xFF00C853).copy(alpha = 0.16f)
+                                    FinPositive.copy(alpha = 0.16f)
                                 },
                                 contentColor = if (negativeAccountsCount > 0) {
                                     MaterialTheme.colorScheme.onErrorContainer
                                 } else {
-                                    Color(0xFF00C853)
+                                    FinPositive
                                 }
                             )
                             Column(modifier = Modifier.weight(1f)) {
@@ -1234,7 +1043,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(Icons.Default.CloudDone, contentDescription = null, tint = Color(0xFF00C853), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.CloudDone, contentDescription = null, tint = FinPositive, modifier = Modifier.size(16.dp))
                                 Text(
                                     text = "Last cloud sync: $timeStr",
                                     style = MaterialTheme.typography.labelSmall,
@@ -1350,175 +1159,52 @@ fun SettingsScreen(
             if (showSystem) {
                 item(key = "HEADER_SYSTEM") {
                     SettingsSectionHeader(
-                        title = "SYSTEM, ANALYTICS & ABOUT",
-                        subtitle = "Engine telemetry, release changelog & developer support"
+                        title = "About",
+                        subtitle = "Version, analytics and release notes"
                     )
                 }
 
                 // 2x2 Bento Local Engine Metrics Grid
                 item(key = "CARD_ENGINE_METRICS") {
                     SettingsGroupCard {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Analytics,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "LOCAL ENGINE TELEMETRY",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 0.8.sp
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SettingsMetricTile(
-                                label = "Active Accounts",
-                                value = "${uiState.accounts.size}",
-                                sublabel = "${uiState.tallyAccountsCount} in tally",
-                                modifier = Modifier.weight(1f)
-                            )
-                            SettingsMetricTile(
-                                label = "Recent Ledger",
-                                value = "${uiState.recentTransactions.size}",
-                                sublabel = "Tracked entries",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SettingsMetricTile(
-                                label = "Base Currency",
-                                value = uiState.baseCurrency,
-                                sublabel = "Primary FX code",
-                                modifier = Modifier.weight(1f)
-                            )
-                            SettingsMetricTile(
-                                label = "Custom FX Rates",
-                                value = "${uiState.exchangeRates.size}",
-                                sublabel = if (uiState.exchangeRates.isEmpty()) "Built-in rates" else "Active overrides",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-
                         SettingsNavigationRow(
-                            icon = Icons.Default.Analytics,
-                            title = "Deep Analytics & Cashflow Forecast",
-                            subtitle = "Financial health score, daily heatmap & burn rate",
+                            icon = Icons.Rounded.Insights,
+                            title = "Analytics & forecast",
+                            subtitle = "Health score, spending heatmap and burn rate",
                             onClick = onNavigateToAnalytics
                         )
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         SettingsNavigationRow(
-                            icon = Icons.Default.NewReleases,
-                            title = "APK Release Center & Changelog",
-                            subtitle = "Version v1.2.0 • Inspect build notes & export guide",
-                            badgeText = "v1.2.0",
+                            icon = Icons.Rounded.NewReleases,
+                            title = "Release notes",
+                            subtitle = "Version 1.2.0",
                             onClick = onNavigateToApkReleases
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        SettingsNavigationRow(
+                            icon = Icons.Rounded.LocalCafe,
+                            title = "Support development",
+                            subtitle = "buymeacoffee.com/rohan_reyes",
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/rohan_reyes")))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
                 }
 
-                // Support Developer / Buy Me a Coffee + Offline Security Badge
                 item(key = "CARD_SUPPORT_AND_SECURITY") {
-                    SettingsGroupCard {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFFFDD00),
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(text = "☕", fontSize = 22.sp)
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Support Development",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Created by Rohan Reyes • buymeacoffee.com/rohan_reyes",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                try {
-                                    val intent = Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://buymeacoffee.com/rohan_reyes")
-                                    )
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFFFDD00),
-                                contentColor = Color(0xFF1E1E1E)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "☕ Buy Me a Coffee",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(
-                                imageVector = Icons.Default.Launch,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Security,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "100% OFFLINE-FIRST • ZERO TELEMETRY",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 0.6.sp
-                            )
-                        }
-
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Rounded.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                         Text(
-                            text = "All accounts, sub-accounts, transactions, debts, freelance milestones, and budgets are stored locally on your device in Room.",
+                            text = "Your data is stored on this phone. It only leaves the device when you use server sync, Google Drive backup or an export.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1820,11 +1506,10 @@ private fun SettingsLivePreviewHeroCard(
                     }
                     Column {
                         Text(
-                            text = "LIVE THEME & HERO PREVIEW",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.ExtraBold,
-                            color = contentColor.copy(alpha = 0.8f),
-                            letterSpacing = 0.8.sp
+                            text = "Live theme & hero preview",
+                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = contentColor.copy(alpha = 0.8f)
                         )
                         Text(
                             text = "${appThemePreset.title} • ${heroBackgroundStyle.title}",
@@ -1953,15 +1638,13 @@ private fun SettingsSectionHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, start = 2.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+            .padding(top = 12.dp, start = 4.dp, bottom = 2.dp)
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary,
-            letterSpacing = 0.9.sp
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Text(
             text = subtitle,
@@ -1975,23 +1658,74 @@ private fun SettingsSectionHeader(
 private fun SettingsGroupCard(
     content: @Composable () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-        ),
-        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             content()
         }
     }
+}
+
+/** Round colour swatch with a label underneath; used for palette and balance-card style. */
+@Composable
+private fun SwatchOption(label: String, brush: Brush, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(brush)
+                .then(
+                    if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) Icon(Icons.Rounded.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
+        )
+    }
+}
+
+private fun paletteSwatch(preset: AppThemePreset): Pair<Color, Color> = when (preset) {
+    AppThemePreset.MATERIAL_YOU -> Color(0xFF6750A4) to Color(0xFF00B4DB)
+    AppThemePreset.EMERALD_AURORA -> Color(0xFF0F8A6F) to Color(0xFF2CC59A)
+    AppThemePreset.OCEAN_INDIGO -> Color(0xFF1E5BB0) to Color(0xFF4FA3FF)
+    AppThemePreset.SUNSET_GLOW -> Color(0xFFBA1A3E) to Color(0xFFF27121)
+    AppThemePreset.MIDNIGHT_NEBULA -> Color(0xFF5B3A8E) to Color(0xFFB98AF0)
+    AppThemePreset.GOLDEN_LUXE -> Color(0xFF8B5000) to Color(0xFFFFB95F)
+    AppThemePreset.CYBERPUNK_NEON -> Color(0xFF006874) to Color(0xFFFF4FD8)
+    AppThemePreset.TITANIUM_SLATE -> Color(0xFF334155) to Color(0xFF94A3B8)
+}
+
+private fun heroSwatch(style: HeroBackgroundStyle, container: Color, primary: Color): Brush = when (style) {
+    HeroBackgroundStyle.SOLID -> Brush.linearGradient(listOf(container, primary.copy(alpha = 0.6f)))
+    HeroBackgroundStyle.GRADIENT -> Brush.linearGradient(listOf(Color(0xFF1E3C72), Color(0xFF0072FF)))
+    HeroBackgroundStyle.SUNSET_GLOW -> Brush.linearGradient(listOf(Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121)))
+    HeroBackgroundStyle.EMERALD_AURORA -> Brush.linearGradient(listOf(Color(0xFF0575E6), Color(0xFF00F260)))
+    HeroBackgroundStyle.MIDNIGHT_NEBULA -> Brush.linearGradient(listOf(Color(0xFF200122), Color(0xFF9013FE)))
+    HeroBackgroundStyle.GOLDEN_LUXE -> Brush.linearGradient(listOf(Color(0xFF3A1C71), Color(0xFFD76D77), Color(0xFFFFAF7B)))
 }
 
 @Composable
@@ -2050,8 +1784,8 @@ private fun SettingsNavigationRow(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
                     )
                     if (badgeText != null) {
                         Surface(

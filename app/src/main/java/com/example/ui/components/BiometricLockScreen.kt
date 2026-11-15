@@ -179,11 +179,10 @@ fun BiometricLockScreen(
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
-                            text = "BIOMETRIC VAULT PROTECTED",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
+                            text = "Biometric vault protected",
+                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }

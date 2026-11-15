@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -234,7 +236,7 @@ fun DebtScreen(
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (selectedTabIndex == 0) Color(0xFF00C853).copy(alpha = 0.12f) else Color(0xFFD50000).copy(alpha = 0.12f)
+                    containerColor = if (selectedTabIndex == 0) FinPositive.copy(alpha = 0.12f) else FinNegative.copy(alpha = 0.12f)
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -255,13 +257,13 @@ fun DebtScreen(
                                 text = if (selectedTabIndex == 0) "TOTAL MONEY OWED TO YOU" else "TOTAL YOU OWE OTHERS",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (selectedTabIndex == 0) Color(0xFF00C853) else Color(0xFFD50000)
+                                color = if (selectedTabIndex == 0) FinPositive else FinNegative
                             )
                             Text(
                                 text = CurrencyUtils.formatCurrency(currentTotal, baseCurrency),
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (selectedTabIndex == 0) Color(0xFF00C853) else Color(0xFFD50000)
+                                color = if (selectedTabIndex == 0) FinPositive else FinNegative
                             )
                         }
                         Box(
@@ -269,14 +271,14 @@ fun DebtScreen(
                                 .size(44.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (selectedTabIndex == 0) Color(0xFF00C853).copy(alpha = 0.2f) else Color(0xFFD50000).copy(alpha = 0.2f)
+                                    if (selectedTabIndex == 0) FinPositive.copy(alpha = 0.2f) else FinNegative.copy(alpha = 0.2f)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.People,
                                 contentDescription = null,
-                                tint = if (selectedTabIndex == 0) Color(0xFF00C853) else Color(0xFFD50000)
+                                tint = if (selectedTabIndex == 0) FinPositive else FinNegative
                             )
                         }
                     }
@@ -474,7 +476,7 @@ private fun DebtItemCard(
             val diffDays = (diffMillis / (1000L * 60 * 60 * 24)).toInt()
 
             when {
-                diffDays < 0 -> Pair("Overdue by ${-diffDays}d", Color(0xFFD50000))
+                diffDays < 0 -> Pair("Overdue by ${-diffDays}d", FinNegative)
                 diffDays == 0 -> Pair("Expected Today", Color(0xFFFF9100))
                 diffDays == 1 -> Pair("Expected Tomorrow", Color(0xFF00B0FF))
                 diffDays <= 7 -> Pair("Due in ${diffDays}d", Color(0xFF2979FF))
@@ -486,7 +488,7 @@ private fun DebtItemCard(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -518,7 +520,7 @@ private fun DebtItemCard(
                         text = CurrencyUtils.formatCurrency(debt.remainingAmount, currencyCode),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isLent) Color(0xFF00C853) else Color(0xFFD50000)
+                        color = if (isLent) FinPositive else FinNegative
                     )
                     if (debt.remainingAmount < debt.totalAmount) {
                         Text(
@@ -631,7 +633,7 @@ private fun DebtItemCard(
                     onClick = onSettleClicked,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isLent) Color(0xFF00C853) else MaterialTheme.colorScheme.primary
+                        containerColor = if (isLent) FinPositive else MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Icon(imageVector = Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1245,7 +1247,7 @@ private fun SettleDebtDialog(
                 Icon(
                     imageVector = if (isLent) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
                     contentDescription = null,
-                    tint = if (isLent) Color(0xFF00C853) else Color(0xFFD50000)
+                    tint = if (isLent) FinPositive else FinNegative
                 )
                 Text(
                     text = if (isLent) "Receive Payment: ${debt.personName}" else "Repay Debt: ${debt.personName}",
@@ -1264,7 +1266,7 @@ private fun SettleDebtDialog(
                 // Info Banner
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isLent) Color(0xFF00C853).copy(alpha = 0.12f) else Color(0xFFD50000).copy(alpha = 0.12f),
+                    color = if (isLent) FinPositive.copy(alpha = 0.12f) else FinNegative.copy(alpha = 0.12f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1279,13 +1281,13 @@ private fun SettleDebtDialog(
                                 text = if (isLent) "CURRENT RECEIVABLE" else "OUTSTANDING BALANCE",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isLent) Color(0xFF00C853) else Color(0xFFD50000)
+                                color = if (isLent) FinPositive else FinNegative
                             )
                             Text(
                                 text = CurrencyUtils.formatCurrency(debt.remainingAmount, currencyCode),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (isLent) Color(0xFF00C853) else Color(0xFFD50000)
+                                color = if (isLent) FinPositive else FinNegative
                             )
                         }
                         if (debt.remainingAmount < debt.totalAmount) {
@@ -1416,12 +1418,12 @@ private fun SettleDebtDialog(
 
                                 Text(
                                     text = if (isLent) {
-                                        "✓ Money will be credited to ${selectedAccount.name} and logged in master records."
+                                        "Money will be credited to ${selectedAccount.name} and logged in master records."
                                     } else {
-                                        "✓ Money will be debited from ${selectedAccount.name} and logged in master records."
+                                        "Money will be debited from ${selectedAccount.name} and logged in master records."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (isLent) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isLent) FinPositive else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1449,7 +1451,7 @@ private fun SettleDebtDialog(
                     onConfirm(amount, targetAccId)
                 },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isLent) Color(0xFF00C853) else MaterialTheme.colorScheme.primary
+                    containerColor = if (isLent) FinPositive else MaterialTheme.colorScheme.primary
                 )
             ) {
                 Text(if (isLent) "Confirm Received" else "Confirm Payment")

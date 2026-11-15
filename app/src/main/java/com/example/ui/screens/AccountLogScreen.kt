@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -695,7 +697,7 @@ private fun AccountAnalyticsView(
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -711,13 +713,13 @@ private fun AccountAnalyticsView(
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = if (netCashflow >= 0) Color(0xFF00C853).copy(alpha = 0.15f) else Color(0xFFFF3B30).copy(alpha = 0.15f)
+                            color = if (netCashflow >= 0) FinPositive.copy(alpha = 0.15f) else FinNegative.copy(alpha = 0.15f)
                         ) {
                             Text(
                                 text = if (netCashflow >= 0) "Net Positive" else "Net Outflow",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (netCashflow >= 0) Color(0xFF00C853) else Color(0xFFFF3B30),
+                                color = if (netCashflow >= 0) FinPositive else FinNegative,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -732,7 +734,7 @@ private fun AccountAnalyticsView(
                         // Inflow Card
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF00C853).copy(alpha = 0.1f),
+                            color = FinPositive.copy(alpha = 0.1f),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -740,15 +742,15 @@ private fun AccountAnalyticsView(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = Color(0xFF00C853), modifier = Modifier.size(16.dp))
-                                    Text("Total Inflow", style = MaterialTheme.typography.labelSmall, color = Color(0xFF00C853))
+                                    Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = FinPositive, modifier = Modifier.size(16.dp))
+                                    Text("Total Inflow", style = MaterialTheme.typography.labelSmall, color = FinPositive)
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = CurrencyUtils.formatCurrency(totalInflow, currencyCode, hideMoney = hideMoney),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF00C853)
+                                    color = FinPositive
                                 )
                             }
                         }
@@ -756,7 +758,7 @@ private fun AccountAnalyticsView(
                         // Outflow Card
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFFF3B30).copy(alpha = 0.1f),
+                            color = FinNegative.copy(alpha = 0.1f),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -764,15 +766,15 @@ private fun AccountAnalyticsView(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = Color(0xFFFF3B30), modifier = Modifier.size(16.dp))
-                                    Text("Total Outflow", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFF3B30))
+                                    Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = FinNegative, modifier = Modifier.size(16.dp))
+                                    Text("Total Outflow", style = MaterialTheme.typography.labelSmall, color = FinNegative)
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = CurrencyUtils.formatCurrency(totalOutflow, currencyCode, hideMoney = hideMoney),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFF3B30)
+                                    color = FinNegative
                                 )
                             }
                         }
@@ -809,7 +811,7 @@ private fun AccountAnalyticsView(
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -892,7 +894,7 @@ private fun AccountAnalyticsView(
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -1027,7 +1029,7 @@ private fun AccountHeaderCard(
                     // Tally status badge
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (account.includeInTally) Color.Black.copy(alpha = 0.25f) else Color(0xFFD32F2F).copy(alpha = 0.6f),
+                        color = if (account.includeInTally) Color.Black.copy(alpha = 0.25f) else FinNegative.copy(alpha = 0.6f),
                         onClick = { onToggleTally?.invoke(!account.includeInTally) },
                         modifier = Modifier.clip(RoundedCornerShape(8.dp))
                     ) {
@@ -1039,7 +1041,7 @@ private fun AccountHeaderCard(
                             Icon(
                                 imageVector = if (account.includeInTally) Icons.Default.Check else Icons.Default.VisibilityOff,
                                 contentDescription = null,
-                                tint = if (account.includeInTally) Color(0xFF00E676) else Color.White,
+                                tint = if (account.includeInTally) FinPositive else Color.White,
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
@@ -1185,7 +1187,7 @@ private fun AccountHeaderCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFD32F2F).copy(alpha = 0.85f),
+                    color = FinNegative.copy(alpha = 0.85f),
                     onClick = onAdjustBalanceClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1213,7 +1215,7 @@ private fun AccountHeaderCard(
                             )
                         }
                         Text(
-                            text = "Fix Balance ➔",
+                            text = "Fix balance",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
@@ -1431,9 +1433,9 @@ private fun AccountTransactionItem(
 
     val typeColor = remember(isIncome, isTransfer) {
         when {
-            isIncome -> Color(0xFF00C853)
+            isIncome -> FinPositive
             isTransfer -> Color(0xFF0091EA)
-            else -> Color(0xFFD50000)
+            else -> FinNegative
         }
     }
 
@@ -1470,7 +1472,7 @@ private fun AccountTransactionItem(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = Modifier.fillMaxWidth()
     ) {

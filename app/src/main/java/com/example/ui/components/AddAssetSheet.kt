@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.FinPositive
+import com.example.ui.theme.FinWarning
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -92,8 +94,8 @@ data class AssetCategoryInfo(
 val ASSET_CATEGORIES = listOf(
     AssetCategoryInfo("Vehicles", Icons.Default.DirectionsCar, Color(0xFF1E88E5)),
     AssetCategoryInfo("Electronics & Tech", Icons.Default.Computer, Color(0xFF7C4DFF)),
-    AssetCategoryInfo("Real Estate & Land", Icons.Default.Home, Color(0xFF43A047)),
-    AssetCategoryInfo("Jewelry & Luxury", Icons.Default.Diamond, Color(0xFFFFB300)),
+    AssetCategoryInfo("Real Estate & Land", Icons.Default.Home, FinPositive),
+    AssetCategoryInfo("Jewelry & Luxury", Icons.Default.Diamond, FinWarning),
     AssetCategoryInfo("Collectibles & Art", Icons.Default.Palette, Color(0xFFE91E63)),
     AssetCategoryInfo("Tools & Equipment", Icons.Default.Work, Color(0xFFFF7043)),
     AssetCategoryInfo("Other Valuables", Icons.Default.Inventory2, Color(0xFF00ACC1))
@@ -102,8 +104,8 @@ val ASSET_CATEGORIES = listOf(
 val ASSET_PALETTE_COLORS = listOf(
     Color(0xFF1E88E5), // Blue
     Color(0xFF7C4DFF), // Deep Purple
-    Color(0xFF43A047), // Emerald Green
-    Color(0xFFFFB300), // Amber Gold
+    FinPositive, // Emerald Green
+    FinWarning, // Amber Gold
     Color(0xFFE91E63), // Pink/Magenta
     Color(0xFFFF7043), // Coral
     Color(0xFF00ACC1), // Cyan Teal

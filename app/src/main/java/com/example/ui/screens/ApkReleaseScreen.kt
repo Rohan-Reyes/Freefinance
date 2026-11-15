@@ -91,10 +91,10 @@ private val RELEASE_HISTORY = listOf(
         isLatest = true,
         tag = "Latest Stable",
         highlights = listOf(
-            "⚡ High-performance LazyColumn rendering with memoized derivedStateOf observations and dedicated item keying for 60fps scrolling.",
-            "🔒 Complete Privacy Masking Mode with asterisk balance obfuscation across the hero card, breakdown grid, and records.",
-            "🏦 Direct Banking & E-Wallet App Launcher with API 30+ package query support (MariBank, GCash, Maya, SeaBank, BDO, BPI, etc.).",
-            "📦 In-app APK Release & Changelog hub with export guides and build metadata inspection."
+            "High-performance LazyColumn rendering with memoized derivedStateOf observations and dedicated item keying for 60fps scrolling.",
+            "Complete Privacy Masking Mode with asterisk balance obfuscation across the hero card, breakdown grid, and records.",
+            "Direct Banking & E-Wallet App Launcher with API 30+ package query support (MariBank, GCash, Maya, SeaBank, BDO, BPI, etc.).",
+            "In-app APK Release & Changelog hub with export guides and build metadata inspection."
         )
     ),
     ReleaseInfo(
@@ -104,10 +104,10 @@ private val RELEASE_HISTORY = listOf(
         isLatest = false,
         tag = "Stable",
         highlights = listOf(
-            "💎 Assets & Valuables Tracker for real estate, vehicles, tech hardware, and precious metals.",
-            "🧾 Receipts Inbox with camera snap OCR extraction pipeline and draft review queue.",
-            "📲 Android Home Screen App Widgets with real-time balance glance and 1-tap quick action bar.",
-            "💱 Custom live Exchange Rates support with USD international overrides."
+            "Assets & Valuables Tracker for real estate, vehicles, tech hardware, and precious metals.",
+            "Receipts Inbox with camera snap OCR extraction pipeline and draft review queue.",
+            "Android Home Screen App Widgets with real-time balance glance and 1-tap quick action bar.",
+            "Custom live Exchange Rates support with USD international overrides."
         )
     ),
     ReleaseInfo(
@@ -117,9 +117,9 @@ private val RELEASE_HISTORY = listOf(
         isLatest = false,
         tag = "Initial Launch",
         highlights = listOf(
-            "🚀 100% Offline-First multi-currency Room SQLite ledger foundation.",
-            "📊 Modular Dynamic Dashboard with 10+ reorderable and toggleable financial cards.",
-            "💾 Universal JSON State Sync (lossless full database import/export) and CSV spreadsheet export."
+            "100% Offline-First multi-currency Room SQLite ledger foundation.",
+            "Modular Dynamic Dashboard with 10+ reorderable and toggleable financial cards.",
+            "Universal JSON State Sync (lossless full database import/export) and CSV spreadsheet export."
         )
     )
 )
@@ -227,11 +227,10 @@ fun ApkReleaseScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "RELEASE HISTORY & CHANGELOG",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
+                            text = "Release history & changelog",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -476,7 +475,7 @@ private fun ApkDownloadGuideCard(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -666,7 +665,7 @@ private fun SystemSpecsCard(modifier: Modifier = Modifier) {
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier.fillMaxWidth()
     ) {

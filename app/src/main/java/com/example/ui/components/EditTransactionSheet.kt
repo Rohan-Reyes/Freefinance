@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -188,8 +190,8 @@ fun EditTransactionSheet(
                         selected = index == selectedTypeIndex,
                         icon = {
                             when (type) {
-                                TransactionType.INCOME -> Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = Color(0xFF00C853), modifier = Modifier.size(16.dp))
-                                TransactionType.EXPENSE -> Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = Color(0xFFFF3B30), modifier = Modifier.size(16.dp))
+                                TransactionType.INCOME -> Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = FinPositive, modifier = Modifier.size(16.dp))
+                                TransactionType.EXPENSE -> Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = FinNegative, modifier = Modifier.size(16.dp))
                                 TransactionType.TRANSFER -> Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             }
                         }
@@ -441,7 +443,7 @@ fun EditTransactionSheet(
                                     text = "Proof Attached (Tap to View)",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF00C853)
+                                    color = FinPositive
                                 )
                                 Text(
                                     text = imgFile.name,

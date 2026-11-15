@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
+import com.example.ui.theme.FinWarning
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -335,11 +338,10 @@ fun SubscriptionsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "SCHEDULED RECURRING ITEMS",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Scheduled recurring items",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "${filteredList.size} Showing",
@@ -553,11 +555,10 @@ fun RecurringOverviewHeroCard(
                     }
                     Column {
                         Text(
-                            text = "MONTHLY RECURRING RUN-RATE",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
+                            text = "Monthly recurring run-rate",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "$activeCount Active Plans",
@@ -600,7 +601,7 @@ fun RecurringOverviewHeroCard(
                             Icon(
                                 imageVector = Icons.Default.ArrowDownward,
                                 contentDescription = null,
-                                tint = Color(0xFFE53935),
+                                tint = FinNegative,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
@@ -614,7 +615,7 @@ fun RecurringOverviewHeroCard(
                             text = CurrencyUtils.formatCurrency(monthlyBurn, baseCurrency),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFE53935)
+                            color = FinNegative
                         )
                     }
                 }
@@ -633,7 +634,7 @@ fun RecurringOverviewHeroCard(
                             Icon(
                                 imageVector = Icons.Default.ArrowUpward,
                                 contentDescription = null,
-                                tint = Color(0xFF2E7D32),
+                                tint = FinPositive,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
@@ -647,7 +648,7 @@ fun RecurringOverviewHeroCard(
                             text = CurrencyUtils.formatCurrency(monthlyInflow, baseCurrency),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF2E7D32)
+                            color = FinPositive
                         )
                     }
                 }
@@ -702,7 +703,7 @@ fun RecurringOverviewHeroCard(
                             text = "${if (isIncome) "+" else "-"}${CurrencyUtils.formatCurrency(item.amount, baseCurrency)}",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
-                            color = if (isIncome) Color(0xFF2E7D32) else Color(0xFFE53935)
+                            color = if (isIncome) FinPositive else FinNegative
                         )
                     }
                 }
@@ -744,7 +745,7 @@ fun RevampedSubscriptionCard(
         title.contains("YouTube", ignoreCase = true) -> Color(0xFFFF0000)
         title.contains("Netflix", ignoreCase = true) -> Color(0xFFE50914)
         title.contains("Spotify", ignoreCase = true) -> Color(0xFF1DB954)
-        isIncome -> Color(0xFF2E7D32)
+        isIncome -> FinPositive
         else -> MaterialTheme.colorScheme.primary
     }
 
@@ -834,7 +835,7 @@ fun RevampedSubscriptionCard(
                         text = "${if (isIncome) "+" else "-"}${CurrencyUtils.formatCurrency(subscription.amount, currencyCode)}",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isIncome) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                        color = if (isIncome) FinPositive else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = if (isIncome) "Scheduled Inflow" else "Recurring Bill",
@@ -871,8 +872,8 @@ fun RevampedSubscriptionCard(
                 }
 
                 val badgeColor = when {
-                    daysUntilDue == 0L -> Color(0xFFE53935)
-                    daysUntilDue <= 3L -> Color(0xFFFF9500)
+                    daysUntilDue == 0L -> FinNegative
+                    daysUntilDue <= 3L -> FinWarning
                     else -> MaterialTheme.colorScheme.primary
                 }
 
@@ -932,7 +933,7 @@ fun RevampedSubscriptionCard(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isIncome) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primaryContainer,
+                        containerColor = if (isIncome) FinPositive else MaterialTheme.colorScheme.primaryContainer,
                         contentColor = if (isIncome) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 ) {
@@ -1125,7 +1126,7 @@ fun RevampedAddSubscriptionBottomSheet(
                 Surface(
                     onClick = { itemType = TransactionType.INCOME },
                     shape = RoundedCornerShape(12.dp),
-                    color = if (itemType == TransactionType.INCOME) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    color = if (itemType == TransactionType.INCOME) FinPositive.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.weight(1f)
                 ) {
                     Row(
@@ -1138,7 +1139,7 @@ fun RevampedAddSubscriptionBottomSheet(
                         Icon(
                             imageVector = Icons.Default.ArrowUpward,
                             contentDescription = null,
-                            tint = if (itemType == TransactionType.INCOME) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (itemType == TransactionType.INCOME) FinPositive else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -1146,7 +1147,7 @@ fun RevampedAddSubscriptionBottomSheet(
                             text = "Recurring Inflow",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (itemType == TransactionType.INCOME) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (itemType == TransactionType.INCOME) FinPositive else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -1479,7 +1480,7 @@ fun RevampedAddSubscriptionBottomSheet(
             val scheduleFormatted = com.example.util.RecurrenceHelper.formatSchedule(currentRecurrenceRule, previewCal.time)
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (itemType == TransactionType.INCOME) Color(0xFF00C853).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                color = if (itemType == TransactionType.INCOME) FinPositive.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1490,7 +1491,7 @@ fun RevampedAddSubscriptionBottomSheet(
                     Icon(
                         imageVector = Icons.Default.EventRepeat,
                         contentDescription = null,
-                        tint = if (itemType == TransactionType.INCOME) Color(0xFF00C853) else MaterialTheme.colorScheme.primary,
+                        tint = if (itemType == TransactionType.INCOME) FinPositive else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
@@ -1605,7 +1606,7 @@ fun ReceiveOrPayNextPaymentDialog(
     }
     val dateFormatter = remember { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.getDefault()) }
 
-    val themeColor = if (isIncome) Color(0xFF00C853) else MaterialTheme.colorScheme.primary
+    val themeColor = if (isIncome) FinPositive else MaterialTheme.colorScheme.primary
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1723,7 +1724,7 @@ fun ReceiveOrPayNextPaymentDialog(
                 Card(
                     onClick = { accountDropdownExpanded = true },
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(

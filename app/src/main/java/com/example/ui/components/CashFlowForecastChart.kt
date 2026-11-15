@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,7 +53,7 @@ fun CashFlowForecastChart(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -72,11 +74,10 @@ fun CashFlowForecastChart(
             ) {
                 Column {
                     Text(
-                        text = "30-DAY CASH FLOW FORECAST",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "30-DAY cash flow forecast",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = CurrencyUtils.formatCurrency(endBalance, currencyCode),
@@ -91,7 +92,7 @@ fun CashFlowForecastChart(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier
                         .background(
-                            color = if (isPositiveTrend) Color(0xFF00C853).copy(alpha = 0.15f) else Color(0xFFD50000).copy(alpha = 0.15f),
+                            color = if (isPositiveTrend) FinPositive.copy(alpha = 0.15f) else FinNegative.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(12.dp)
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -99,7 +100,7 @@ fun CashFlowForecastChart(
                     Icon(
                         imageVector = if (isPositiveTrend) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                         contentDescription = null,
-                        tint = if (isPositiveTrend) Color(0xFF00C853) else Color(0xFFD50000),
+                        tint = if (isPositiveTrend) FinPositive else FinNegative,
                         modifier = Modifier.height(16.dp)
                     )
                     Text(
@@ -111,7 +112,7 @@ fun CashFlowForecastChart(
                         ),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (isPositiveTrend) Color(0xFF00C853) else Color(0xFFD50000)
+                        color = if (isPositiveTrend) FinPositive else FinNegative
                     )
                 }
             }
@@ -119,7 +120,7 @@ fun CashFlowForecastChart(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Zero-allocation Cached Canvas Chart
-            val chartLineColor = if (isPositiveTrend) Color(0xFF00E676) else Color(0xFFFF5252)
+            val chartLineColor = if (isPositiveTrend) FinPositive else FinNegative
 
             Box(
                 modifier = Modifier

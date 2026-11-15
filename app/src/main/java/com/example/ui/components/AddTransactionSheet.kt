@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -252,8 +254,8 @@ fun AddTransactionSheet(
             val currencySymbol = CurrencyUtils.getSymbol(currencyCode)
 
             val themeColor = when (selectedType) {
-                TransactionType.INCOME -> Color(0xFF00C853)
-                TransactionType.EXPENSE -> Color(0xFFD50000)
+                TransactionType.INCOME -> FinPositive
+                TransactionType.EXPENSE -> FinNegative
                 TransactionType.TRANSFER -> MaterialTheme.colorScheme.primary
             }
 
@@ -514,7 +516,7 @@ fun AddTransactionSheet(
                                     text = "Proof Attached",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF00C853)
+                                    color = FinPositive
                                 )
                                 Text(
                                     text = imgFile.name,

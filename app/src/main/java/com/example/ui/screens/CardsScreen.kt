@@ -1,5 +1,17 @@
 package com.example.ui.screens
 
+import com.example.ui.brand.BrandMark
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Contactless
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import com.example.ui.brand.Brands
+import com.example.ui.brand.BrandWordmark
+import com.example.ui.brand.NetworkMark
+import com.example.ui.brand.drawBrandPattern
+import java.util.Locale
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -624,7 +636,7 @@ private fun CardsPortfolioOverviewCard(
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
         modifier = Modifier.fillMaxWidth()
@@ -660,11 +672,10 @@ private fun CardsPortfolioOverviewCard(
                     }
                     Column {
                         Text(
-                            text = "CREDIT LIMIT & UTILIZATION TRACKER",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 0.8.sp
+                            text = "Credit limit & utilization tracker",
+                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = if (creditCardCount > 0) {
@@ -1166,308 +1177,146 @@ fun RealisticPaymentCardFace(
     modifier: Modifier = Modifier
 ) {
     val finishStyle = remember(card.cardFinish) { CardFinishStyle.fromId(card.cardFinish) }
+    // Recognised issuers (GCash, Maya, MariBank, GoTyme, BDO, BPI…) get their brand-styled design.
+    val brand = remember(card.issuingBank, card.cardName) { Brands.detect(card.issuingBank, card.cardName) }
+    val background = brand?.colors ?: finishStyle.colors
+    val accent = brand?.accent ?: finishStyle.accentColor
+    val ink = brand?.content ?: Color.White
+    val inkMuted = ink.copy(alpha = 0.72f)
+    val typeLabel = buildString {
+        if (card.isVirtual) append("VIRTUAL ")
+        append(card.cardType.uppercase(Locale.ROOT))
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(206.dp)
-            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-            .background(Brush.linearGradient(colors = finishStyle.colors))
+            .aspectRatio(1.586f) // ISO/IEC 7810 ID-1 card proportions
+            .clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(colors = background))
             .drawBehind {
-                // Subtle ambient luxury card arcs
-                drawCircle(
-                    color = finishStyle.accentColor.copy(alpha = 0.14f),
-                    radius = size.minDimension * 0.65f,
-                    center = Offset(size.width * 0.88f, size.height * 0.18f)
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.05f),
-                    radius = size.minDimension * 0.5f,
-                    center = Offset(size.width * 0.15f, size.height * 0.92f)
-                )
+                if (brand != null) {
+                    drawBrandPattern(brand.pattern, accent)
+                } else {
+                    drawCircle(accent.copy(alpha = 0.12f), radius = size.minDimension * 0.7f, center = Offset(size.width * 0.95f, size.height * 0.1f))
+                }
+                // soft top sheen
+                drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.07f), Color.Transparent), endY = size.height * 0.45f))
             }
             .clickable { onClick() }
-            .padding(20.dp)
+            .padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Top Row: Bank + Card Name + Type Pill + Reveal Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            // Issuer wordmark + card type
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        if (card.issuingBank.isNotBlank()) {
-                            Text(
-                                text = card.issuingBank.uppercase(),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                fontWeight = FontWeight.ExtraBold,
-                                color = finishStyle.accentColor,
-                                letterSpacing = 1.1.sp
-                            )
-                            Text("•", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp)
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color.White.copy(alpha = 0.16f)
-                        ) {
-                            Text(
-                                text = if (card.isVirtual) "VIRTUAL ${card.cardType}" else card.cardType.uppercase(),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        if (card.isFrozen) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFF38BDF8).copy(alpha = 0.25f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AcUnit,
-                                        contentDescription = null,
-                                        tint = Color(0xFF7DD3FC),
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Text(
-                                        text = "FROZEN",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF7DD3FC)
-                                    )
-                                }
-                            }
-                        }
+                    if (brand != null) {
+                        BrandWordmark(brand, fontSize = 22.sp)
+                    } else {
+                        Text(
+                            text = card.issuingBank.ifBlank { card.cardName }.uppercase(Locale.ROOT),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ink,
+                            letterSpacing = 1.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(3.dp))
-
-                    Text(
-                        text = card.cardName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    val shownTitle = brand?.name ?: card.issuingBank.ifBlank { card.cardName }
+                    if (!card.cardName.trim().equals(shownTitle.trim(), ignoreCase = true)) {
+                        Text(
+                            text = card.cardName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        onClick = onToggleReveal,
-                        shape = RoundedCornerShape(50),
-                        color = Color.Black.copy(alpha = 0.32f),
-                        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.22f)),
-                        modifier = Modifier.testTag("btn_reveal_card_${card.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (isRevealed) "Hide Card Numbers" else "Reveal Card Numbers",
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = if (isRevealed) "Hide" else "Reveal",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(typeLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = inkMuted, letterSpacing = 1.sp)
+                    if (card.isFrozen) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF0EA5E9).copy(alpha = 0.28f)) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(Icons.Rounded.AcUnit, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                                Text("Frozen", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
                         }
                     }
                 }
             }
 
-            // Middle Row: Metallic EMV Chip + Contactless Wave + Card Number
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Drawn EMV Metallic Chip
-                    Canvas(modifier = Modifier.size(width = 38.dp, height = 28.dp)) {
-                        drawRoundRect(
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFFFDE68A), Color(0xFFD97706), Color(0xFFF59E0B))
-                            ),
-                            cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
-                            size = size
-                        )
-                        drawRoundRect(
-                            color = Color(0xFF78350F).copy(alpha = 0.45f),
-                            cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
-                            size = size,
-                            style = Stroke(width = 1.dp.toPx())
-                        )
-                        drawLine(
-                            color = Color(0xFF78350F).copy(alpha = 0.4f),
-                            start = Offset(0f, size.height * 0.5f),
-                            end = Offset(size.width, size.height * 0.5f),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color(0xFF78350F).copy(alpha = 0.4f),
-                            start = Offset(size.width * 0.35f, 0f),
-                            end = Offset(size.width * 0.35f, size.height),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color(0xFF78350F).copy(alpha = 0.4f),
-                            start = Offset(size.width * 0.65f, 0f),
-                            end = Offset(size.width * 0.65f, size.height),
-                            strokeWidth = 1.dp.toPx()
-                        )
+            // Chip + contactless, then the number with reveal / copy
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Canvas(modifier = Modifier.size(width = 36.dp, height = 27.dp)) {
+                        val r = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                        drawRoundRect(Brush.linearGradient(listOf(Color(0xFFF3DD9B), Color(0xFFC9A04A), Color(0xFFE9CF85))), cornerRadius = r)
+                        val line = Color(0xFF6B5221).copy(alpha = 0.45f)
+                        val sw = 1.dp.toPx()
+                        drawLine(line, Offset(0f, size.height * 0.5f), Offset(size.width, size.height * 0.5f), sw)
+                        drawLine(line, Offset(size.width * 0.33f, 0f), Offset(size.width * 0.33f, size.height), sw)
+                        drawLine(line, Offset(size.width * 0.67f, 0f), Offset(size.width * 0.67f, size.height), sw)
+                        drawRoundRect(line, cornerRadius = r, style = Stroke(sw))
                     }
-
-                    Icon(
-                        imageVector = Icons.Default.Wifi,
-                        contentDescription = "Contactless",
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.Rounded.Contactless, contentDescription = "Contactless", tint = inkMuted, modifier = Modifier.size(22.dp))
                 }
-
-                // Card Number Row with 1-tap Copy when revealed
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = if (isRevealed) card.formattedCardNumber else card.maskedCardNumber,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 1.8.sp,
-                            fontSize = 19.sp
-                        ),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
+                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp, fontSize = 18.sp),
+                        fontWeight = FontWeight.Bold,
+                        color = ink,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
                     )
-
                     if (isRevealed && card.cardNumber.isNotBlank() && onCopyNumber != null) {
-                        Surface(
-                            onClick = onCopyNumber,
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.White.copy(alpha = 0.2f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy Card Number",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "Copy",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                        IconButton(onClick = onCopyNumber, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy card number", tint = ink, modifier = Modifier.size(16.dp))
                         }
+                    }
+                    IconButton(onClick = onToggleReveal, modifier = Modifier.size(32.dp).testTag("btn_reveal_card_${card.id}")) {
+                        Icon(
+                            imageVector = if (isRevealed) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = if (isRevealed) "Hide card details" else "Show card details",
+                            tint = ink,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
 
-            // Bottom Row: Cardholder Name, Expiry MM/YY, CVV, Network Logo
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column(modifier = Modifier.weight(1.3f)) {
+            // Cardholder, expiry, CVV (only when revealed) and network mark
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "CARDHOLDER",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                        color = Color.White.copy(alpha = 0.65f),
-                        letterSpacing = 0.8.sp
-                    )
-                    Text(
-                        text = card.cardholderName.ifBlank { "VALUED CARDHOLDER" }.uppercase(),
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        text = card.cardholderName.ifBlank { "CARDHOLDER" }.uppercase(Locale.ROOT),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ink,
+                        letterSpacing = 0.8.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("EXP ${card.formattedExpiry}", style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace), color = inkMuted)
+                        if (isRevealed) {
+                            Text(
+                                text = "CVV ${card.cvv.ifBlank { "---" }}",
+                                style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
+                                fontWeight = FontWeight.Bold,
+                                color = ink,
+                                modifier = if (onCopyCvv != null) Modifier.clickable { onCopyCvv() } else Modifier
+                            )
+                        }
+                    }
                 }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(
-                        text = "VALID THRU",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                        color = Color.White.copy(alpha = 0.65f),
-                        letterSpacing = 0.8.sp
-                    )
-                    Text(
-                        text = card.formattedExpiry,
-                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
-                    )
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .then(
-                            if (isRevealed && onCopyCvv != null) Modifier.clickable { onCopyCvv() }
-                            else Modifier
-                        )
-                ) {
-                    Text(
-                        text = "CVV",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                        color = Color.White.copy(alpha = 0.65f),
-                        letterSpacing = 0.8.sp
-                    )
-                    Text(
-                        text = if (isRevealed) card.cvv.ifBlank { "---" } else "•••",
-                        style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isRevealed) finishStyle.accentColor else Color.White
-                    )
-                }
-
-                // Network Emblem (VISA / MASTERCARD / AMEX / JCB)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.White.copy(alpha = 0.16f),
-                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.25f))
-                ) {
-                    Text(
-                        text = card.cardNetwork.uppercase(),
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
+                NetworkMark(card.cardNetwork, onDark = brand?.id != "wise", height = 26.dp)
             }
         }
     }
@@ -1501,7 +1350,7 @@ private fun EmptyCardsVaultState(
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
         modifier = Modifier.fillMaxWidth()
@@ -1632,7 +1481,7 @@ private fun CardFullDetailsSheet(
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1732,7 +1581,7 @@ private fun CardFullDetailsSheet(
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -2072,6 +1921,17 @@ private fun AddEditPaymentCardSheet(
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary
             )
+            val detectedBrand = remember(issuingBank, cardName) { Brands.detect(issuingBank, cardName) }
+            if (detectedBrand != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BrandMark(detectedBrand, size = 32.dp)
+                    Text(
+                        text = "${detectedBrand.name} card design applied automatically. The finish below is used if you change the issuer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

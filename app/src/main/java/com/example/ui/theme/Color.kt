@@ -159,3 +159,13 @@ val SlatePrimaryContainerDark = Color(0xFF334155)
 val SlateOnPrimaryContainerDark = Color(0xFFF1F5F9)
 val SlateSurfaceDarkSolid = Color(0xFF0F172A)
 val SlateSurfaceVariantDarkSolid = Color(0xFF1E293B)
+
+// ============================================================================
+// SEMANTIC FINANCE COLOURS — one calm set used app-wide for money direction & status.
+// Mid-tone values chosen to stay readable on both dark and light surfaces.
+// ============================================================================
+val FinPositive = Color(0xFF22A06B)      // income, gains, healthy
+val FinNegative = Color(0xFFE5484D)      // expenses, overdue, losses
+val FinWarning = Color(0xFFF5A524)       // due soon, near limit
+val FinInfo = Color(0xFF3E8BFF)          // transfers, neutral info
+val FinLocked = Color(0xFF8B7CF6)        // locked / vault funds

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,7 +96,7 @@ import com.example.ui.components.EmptyListPlaceholder
 import com.example.viewmodels.DashboardViewModel
 
 val categoryColorOptions = listOf(
-    Color(0xFFE53935), // Red
+    FinNegative, // Red
     Color(0xFFD81B60), // Pink
     Color(0xFF8E24AA), // Purple
     Color(0xFF5E35B1), // Deep Purple
@@ -102,7 +104,7 @@ val categoryColorOptions = listOf(
     Color(0xFF1E88E5), // Blue
     Color(0xFF00ACC1), // Cyan
     Color(0xFF00897B), // Teal
-    Color(0xFF43A047), // Green
+    FinPositive, // Green
     Color(0xFF7CB342), // Light Green
     Color(0xFFFDD835), // Yellow
     Color(0xFFFB8C00), // Orange
@@ -355,7 +357,7 @@ private fun CategoryCard(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         modifier = Modifier
             .fillMaxWidth()

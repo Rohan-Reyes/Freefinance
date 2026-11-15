@@ -257,8 +257,8 @@ fun TransactionCelebrationCard(
                     // Type Title
                     Text(
                         text = when {
-                            isIncome -> "Income Received! ✨"
-                            isExpense -> "Expense Recorded! 💳"
+                            isIncome -> "Income received"
+                            isExpense -> "Expense recorded"
                             else -> "Transfer Completed! ⇄"
                         },
                         style = MaterialTheme.typography.titleMedium,

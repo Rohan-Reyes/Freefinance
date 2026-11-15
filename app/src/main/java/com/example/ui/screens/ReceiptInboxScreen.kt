@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.FinNegative
+import com.example.ui.theme.FinPositive
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -531,7 +533,7 @@ private fun SingleReceiptReviewView(
         // Queue Progress Bar & Arrows
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ),
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth()
@@ -631,7 +633,7 @@ private fun SingleReceiptReviewView(
                         .padding(10.dp)
                 ) {
                     Text(
-                        text = "🔍 Tap to Zoom",
+                        text = "Tap to zoom",
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -688,7 +690,7 @@ private fun SingleReceiptReviewView(
                             .testTag("btn_classify_expense")
                     ) {
                         Text(
-                            text = "💸 Expense",
+                            text = "Expense",
                             fontWeight = if (isExpense) FontWeight.Bold else FontWeight.Normal
                         )
                     }
@@ -710,7 +712,7 @@ private fun SingleReceiptReviewView(
                             .testTag("btn_classify_income")
                     ) {
                         Text(
-                            text = "💰 Income",
+                            text = "Income",
                             fontWeight = if (isIncome) FontWeight.Bold else FontWeight.Normal
                         )
                     }
@@ -848,7 +850,7 @@ private fun SingleReceiptReviewView(
                     },
                     enabled = canConvert,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (chosenType == TransactionType.EXPENSE) Color(0xFFD32F2F) else Color(0xFF2E7D32)
+                        containerColor = if (chosenType == TransactionType.EXPENSE) FinNegative else FinPositive
                     ),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
@@ -1109,7 +1111,7 @@ private fun ReceiptsArchiveGridView(
                                 ) {
                                     Text(
                                         text = if (isPending) "To Review" else "Classified",
-                                        color = if (isPending) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF2E7D32),
+                                        color = if (isPending) MaterialTheme.colorScheme.onErrorContainer else FinPositive,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -1129,7 +1131,7 @@ private fun ReceiptsArchiveGridView(
                                         text = CurrencyUtils.formatCurrency(receipt.suggestedAmount, baseCurrency),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (receipt.suggestedType.equals("Income", true)) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                                        color = if (receipt.suggestedType.equals("Income", true)) FinPositive else FinNegative
                                     )
                                 }
 
