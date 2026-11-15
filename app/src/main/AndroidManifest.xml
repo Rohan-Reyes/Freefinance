@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Queries declared for Android 11+ (API 30+) Package Visibility to launch Banking and E-Wallet Apps -->

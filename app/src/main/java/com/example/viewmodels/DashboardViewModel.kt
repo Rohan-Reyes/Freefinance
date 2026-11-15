@@ -16,6 +16,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PaymentCardEntity
 import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
@@ -34,6 +35,7 @@ import com.example.data.local.model.ProjectWithMilestones
 import com.example.data.local.model.RecurrenceRule
 import com.example.data.local.model.TransactionStatus
 import com.example.data.local.model.TransactionType
+import com.example.data.preferences.AppThemeMode
 import com.example.data.preferences.AppThemePreset
 import com.example.data.preferences.HeroBackgroundStyle
 import com.example.data.preferences.UserPreferencesRepository
@@ -139,6 +141,7 @@ sealed interface DashboardEvent {
     data class ReceiptDiscarded(val message: String) : DashboardEvent
     data class AssetUpdated(val message: String) : DashboardEvent
     data class PlannedPayoutUpdated(val message: String) : DashboardEvent
+    data class CardUpdated(val message: String) : DashboardEvent
     data class SyncCompleted(val message: String) : DashboardEvent
     data class ExportCompleted(val success: Boolean, val message: String) : DashboardEvent
     data class Error(val error: String) : DashboardEvent
@@ -243,7 +246,21 @@ class DashboardViewModel(
 
     val cloudBackupStatus: StateFlow<CloudBackupStatus> = cloudBackupManager.status
 
+    private val _isAppLocked = MutableStateFlow(false)
+    val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
+    private var lastBackgroundTimestamp: Long = 0L
+
     init {
+        viewModelScope.launch {
+            try {
+                val bioEnabled = preferencesRepository.biometricLockEnabled.first()
+                if (bioEnabled) {
+                    _isAppLocked.value = true
+                }
+            } catch (_: Exception) {
+            }
+        }
+
         viewModelScope.launch {
             try {
                 repository.deleteOrphanedPlannedTransactions()
@@ -337,6 +354,118 @@ class DashboardViewModel(
             preferencesRepository.setAppThemePreset(preset)
             if (syncHeroStyle) {
                 preferencesRepository.setHeroBackgroundStyle(preset.defaultHeroStyle)
+            }
+        }
+    }
+
+    val appThemeMode: StateFlow<AppThemeMode> = preferencesRepository.appThemeMode
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = AppThemeMode.SYSTEM
+        )
+
+    fun setAppThemeMode(mode: AppThemeMode) {
+        viewModelScope.launch {
+            preferencesRepository.setAppThemeMode(mode)
+        }
+    }
+
+    // --- Biometric App Lock & Vault Security ---
+    val biometricLockEnabled: StateFlow<Boolean> = preferencesRepository.biometricLockEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false
+        )
+
+    val requireBiometricForCards: StateFlow<Boolean> = preferencesRepository.requireBiometricForCards
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false
+        )
+
+    val appLockPin: StateFlow<String> = preferencesRepository.appLockPin
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = ""
+        )
+
+    val biometricTimeoutMode: StateFlow<String> = preferencesRepository.biometricTimeoutMode
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = "IMMEDIATE"
+        )
+
+    fun setBiometricLockEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setBiometricLockEnabled(enabled)
+            if (!enabled) {
+                _isAppLocked.value = false
+            }
+        }
+    }
+
+    fun setRequireBiometricForCards(required: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setRequireBiometricForCards(required)
+        }
+    }
+
+    fun setAppLockPin(pin: String) {
+        viewModelScope.launch {
+            preferencesRepository.setAppLockPin(pin)
+        }
+    }
+
+    fun setBiometricTimeoutMode(mode: String) {
+        viewModelScope.launch {
+            preferencesRepository.setBiometricTimeoutMode(mode)
+        }
+    }
+
+    fun unlockApp() {
+        _isAppLocked.value = false
+        lastBackgroundTimestamp = 0L
+    }
+
+    fun lockAppNow() {
+        _isAppLocked.value = true
+    }
+
+    fun onAppBackgrounded() {
+        lastBackgroundTimestamp = System.currentTimeMillis()
+    }
+
+    fun onAppResumed() {
+        viewModelScope.launch {
+            val enabled = preferencesRepository.biometricLockEnabled.first()
+            if (!enabled) return@launch
+            val bgTime = lastBackgroundTimestamp
+            if (bgTime <= 0L) return@launch
+            val elapsedMs = System.currentTimeMillis() - bgTime
+            val timeoutMode = preferencesRepository.biometricTimeoutMode.first()
+            val shouldLock = when (timeoutMode) {
+                "AFTER_1_MIN" -> elapsedMs >= 60_000L
+                "AFTER_5_MIN" -> elapsedMs >= 300_000L
+                else -> elapsedMs >= 1_500L // IMMEDIATE on app switch/resume
+            }
+            if (shouldLock) {
+                _isAppLocked.value = true
+            }
+        }
+    }
+
+    fun reconcileBalancesManually() {
+        viewModelScope.launch {
+            try {
+                repository.reconcileAccountBalancesSafely()
+                _eventFlow.emit(DashboardEvent.SyncCompleted("All account & sub-account balances verified and reconciled."))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error(e.message ?: "Failed to reconcile balances"))
             }
         }
     }
@@ -2044,6 +2173,164 @@ class DashboardViewModel(
         }
     }
 
+    // ==========================================
+    // Payment Cards (Debit Linked to Account/Sub-Account & Credit Limit Tracker)
+    // ==========================================
+    val allPaymentCards: StateFlow<List<PaymentCardEntity>> = repository.allPaymentCards
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    fun getCardsForAccount(accountId: Long) = repository.getCardsForAccount(accountId)
+
+    fun savePaymentCard(card: PaymentCardEntity) {
+        viewModelScope.launch {
+            try {
+                if (card.id == 0L) {
+                    repository.insertPaymentCard(card)
+                    _eventFlow.emit(DashboardEvent.CardUpdated("Card saved: ${card.cardName} (••${card.lastFourDigits})"))
+                } else {
+                    repository.updatePaymentCard(card)
+                    _eventFlow.emit(DashboardEvent.CardUpdated("Card updated: ${card.cardName}"))
+                }
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to save card: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun deletePaymentCard(card: PaymentCardEntity) {
+        viewModelScope.launch {
+            try {
+                repository.deletePaymentCard(card)
+                _eventFlow.emit(DashboardEvent.CardUpdated("Card removed: ${card.cardName}"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to delete card: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun toggleCardFrozen(card: PaymentCardEntity) {
+        viewModelScope.launch {
+            try {
+                val nextFrozen = !card.isFrozen
+                repository.toggleCardFrozen(card.id, nextFrozen)
+                _eventFlow.emit(
+                    DashboardEvent.CardUpdated(
+                        if (nextFrozen) "${card.cardName} marked as Frozen"
+                        else "${card.cardName} unfrozen & active"
+                    )
+                )
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to update card status"))
+            }
+        }
+    }
+
+    fun logCardCharge(
+        card: PaymentCardEntity,
+        amount: Double,
+        categoryId: Long? = null,
+        merchantOrNote: String? = null,
+        overrideAccountId: Long? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                if (card.isFrozen) {
+                    _eventFlow.emit(DashboardEvent.Error("${card.cardName} is currently frozen. Unfreeze it first to log charges."))
+                    return@launch
+                }
+                val tx = repository.logCardCharge(
+                    cardId = card.id,
+                    amount = amount,
+                    categoryId = categoryId,
+                    merchantOrNote = merchantOrNote,
+                    overrideAccountId = overrideAccountId
+                )
+                if (tx != null) {
+                    _lastUndoableAction.value = UndoableAction.Created(tx)
+                }
+                triggerTransactionCelebration(
+                    amount = amount,
+                    type = TransactionType.EXPENSE,
+                    currencyCode = card.currencyCode,
+                    note = merchantOrNote ?: card.cardName
+                )
+                val msg = if (card.isCreditCard) {
+                    val newUsed = card.currentCreditUsed + amount
+                    val avail = (card.creditLimit - newUsed).coerceAtLeast(0.0)
+                    "Logged ${CurrencyUtils.formatCurrency(amount, card.currencyCode)} on ${card.cardName} • Avail Credit: ${CurrencyUtils.formatCurrency(avail, card.currencyCode)}"
+                } else {
+                    "Charged ${CurrencyUtils.formatCurrency(amount, card.currencyCode)} via ${card.cardName}"
+                }
+                _eventFlow.emit(DashboardEvent.TransactionLogged(msg, canUndo = tx != null))
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to log card charge: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun payCreditCardBill(
+        card: PaymentCardEntity,
+        paymentAmount: Double,
+        sourceAccountId: Long,
+        note: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val tx = repository.payCreditCardBill(
+                    cardId = card.id,
+                    paymentAmount = paymentAmount,
+                    sourceAccountId = sourceAccountId,
+                    note = note
+                )
+                if (tx != null) {
+                    _lastUndoableAction.value = UndoableAction.Created(tx)
+                }
+                triggerTransactionCelebration(
+                    amount = paymentAmount,
+                    type = TransactionType.EXPENSE,
+                    currencyCode = card.currencyCode,
+                    note = "Paid ${card.cardName}"
+                )
+                _eventFlow.emit(
+                    DashboardEvent.TransactionLogged(
+                        message = "Paid ${CurrencyUtils.formatCurrency(paymentAmount, card.currencyCode)} toward ${card.cardName}",
+                        canUndo = tx != null
+                    )
+                )
+                triggerWidgetRefresh()
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to pay credit card bill: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    fun adjustCreditCardUsed(
+        card: PaymentCardEntity,
+        newUsedBalance: Double,
+        newStatementBalance: Double = card.statementBalance,
+        newCreditLimit: Double = card.creditLimit
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.updatePaymentCard(
+                    card.copy(
+                        currentCreditUsed = newUsedBalance.coerceAtLeast(0.0),
+                        statementBalance = newStatementBalance.coerceAtLeast(0.0),
+                        creditLimit = newCreditLimit.coerceAtLeast(0.0)
+                    )
+                )
+                _eventFlow.emit(DashboardEvent.CardUpdated("Updated credit limit & balance for ${card.cardName}"))
+            } catch (e: Exception) {
+                _eventFlow.emit(DashboardEvent.Error("Failed to update credit balance"))
+            }
+        }
+    }
+
     companion object {
         fun provideFactory(context: Context): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
@@ -2060,7 +2347,8 @@ class DashboardViewModel(
                         exchangeRateDao = db.exchangeRateDao(),
                         receiptDao = db.receiptDao(),
                         assetDao = db.assetDao(),
-                        plannedPayoutDao = db.plannedPayoutDao()
+                        plannedPayoutDao = db.plannedPayoutDao(),
+                        paymentCardDao = db.paymentCardDao()
                     )
                     val preferencesRepository = UserPreferencesRepository(context.applicationContext)
                     val dataSyncManager = DataSyncManager(db)

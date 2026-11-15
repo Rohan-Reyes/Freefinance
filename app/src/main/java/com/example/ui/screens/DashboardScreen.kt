@@ -96,9 +96,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -156,6 +159,7 @@ fun DashboardScreen(
     onNavigateToReceiptInbox: () -> Unit = {},
     onNavigateToAssets: () -> Unit = {},
     onNavigateToAnalytics: () -> Unit = {},
+    onNavigateToCards: () -> Unit = {},
     initialOpenQuickAdd: Boolean = false,
     onQuickAddHandled: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -180,6 +184,8 @@ fun DashboardScreen(
     val monthlySpendingTrends by viewModel.monthlySpendingTrends.collectAsState()
     val pendingReceiptCount by viewModel.pendingReceiptCount.collectAsState()
     val plannedPayouts by viewModel.allPlannedPayouts.collectAsState()
+    val paymentCards by viewModel.allPaymentCards.collectAsState()
+    val biometricLockEnabled by viewModel.biometricLockEnabled.collectAsState()
     val hideMoney by viewModel.hideMoney.collectAsState()
 
     val canUndo by viewModel.canUndo.collectAsState()
@@ -242,6 +248,7 @@ fun DashboardScreen(
                 is DashboardEvent.ReceiptDiscarded -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.AssetUpdated -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.PlannedPayoutUpdated -> snackbarHostState.showSnackbar(event.message)
+                is DashboardEvent.CardUpdated -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.SyncCompleted -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.ExportCompleted -> snackbarHostState.showSnackbar(event.message)
                 is DashboardEvent.Error -> snackbarHostState.showSnackbar(event.error)
@@ -254,12 +261,30 @@ fun DashboardScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "My Finance",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "My Finance",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                            modifier = Modifier.clickable { onNavigateToSettings() }
+                        ) {
+                            Text(
+                                text = uiState.baseCurrency,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     Box {
@@ -278,11 +303,30 @@ fun DashboardScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Settings") },
+                                text = { Text("Cards & Credit Vault (${paymentCards.size})") },
+                                leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToCards()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings & Themes") },
                                 leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
                                 onClick = {
                                     showMenu = false
                                     onNavigateToSettings()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Lock Vault (Biometrics)") },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    if (!biometricLockEnabled) {
+                                        viewModel.setBiometricLockEnabled(true)
+                                    }
+                                    viewModel.lockAppNow()
                                 }
                             )
                             DropdownMenuItem(
@@ -410,6 +454,17 @@ fun DashboardScreen(
                     }
 
                     IconButton(
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.testTag("dashboard_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    IconButton(
                         onClick = { showAddTransactionSheet = true },
                         modifier = Modifier.testTag("dashboard_quick_add_button")
                     ) {
@@ -504,10 +559,14 @@ fun DashboardScreen(
                 item(key = "PERMANENT_HERO_TOTAL_BALANCE", contentType = "hero") {
                     TotalBalanceHeroCard(
                         totalBalance = uiState.totalBalance,
+                        cashBalance = uiState.cashBalance,
+                        assetsBalance = uiState.assetsBalance,
+                        includeAssets = uiState.includeAssetsInHero,
                         baseCurrency = uiState.baseCurrency,
                         accountCount = uiState.accounts.size,
                         onAddAccountClick = { showAddAccountSheet = true },
                         onNavigateToAssets = onNavigateToAssets,
+                        onToggleIncludeAssets = { viewModel.toggleIncludeAssetsInHero(!uiState.includeAssetsInHero) },
                         backgroundStyle = heroBackgroundStyle,
                         hideMoney = hideMoney,
                         onClick = { selectedCardDetail = DashboardCardType.TOTAL_BALANCE },
@@ -521,6 +580,7 @@ fun DashboardScreen(
                 item(key = "PERMANENT_ACCOUNTS_BREAKDOWN", contentType = "accounts_grid") {
                     AccountsBreakdownRow(
                         accounts = uiState.accounts,
+                        cardsCount = paymentCards.size,
                         hideMoney = hideMoney,
                         onAddAccountClick = {
                             targetParentAccountIdForSubAccount = null
@@ -530,7 +590,8 @@ fun DashboardScreen(
                             targetParentAccountIdForSubAccount = parentId
                             showAddAccountSheet = true
                         },
-                        onAccountClick = onNavigateToAccountLog
+                        onAccountClick = onNavigateToAccountLog,
+                        onNavigateToCards = onNavigateToCards
                     )
                 }
 
@@ -548,7 +609,9 @@ fun DashboardScreen(
                         onNavigateToCommission = onNavigateToCommission,
                         onNavigateToSubscriptions = onNavigateToSubscriptions,
                         onNavigateToAssets = onNavigateToAssets,
-                        onNavigateToAnalytics = onNavigateToAnalytics
+                        onNavigateToAnalytics = onNavigateToAnalytics,
+                        onNavigateToCards = onNavigateToCards,
+                        cardsCount = paymentCards.size
                     )
                 }
 
@@ -1257,6 +1320,8 @@ private fun DashboardNavigationGrid(
     onNavigateToSubscriptions: () -> Unit,
     onNavigateToAssets: () -> Unit,
     onNavigateToAnalytics: () -> Unit,
+    onNavigateToCards: () -> Unit = {},
+    cardsCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1265,58 +1330,108 @@ private fun DashboardNavigationGrid(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Analytics & Cashflow Projection Banner
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onNavigateToAnalytics() }
+        // Top Dual Action Row: Analytics & Cards Vault
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
+            // Analytics & Cashflow Projection Banner
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onNavigateToAnalytics() }
             ) {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
-                        shape = CircleShape,
+                        shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.TrendingUp,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Analytics & Cashflow Forecast",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            text = "Analytics",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1
                         )
                         Text(
-                            text = "Financial calendar, health score & burn rate",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            text = "Forecast & Burn",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                            maxLines = 1
                         )
                     }
                 }
-                Icon(
-                    imageVector = Icons.Default.Launch,
-                    contentDescription = "View Analytics",
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            }
+
+            // Cards & Credit Vault Banner
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onNavigateToCards() }
+                    .testTag("dashboard_nav_cards_vault")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.CreditCard,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (cardsCount > 0) "Cards Vault ($cardsCount)" else "Cards Vault",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "Debit & Credit Limits",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
 
@@ -1398,8 +1513,13 @@ private fun QuickNavCard(
         color = if (highlight)
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
         else
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        modifier = modifier.height(44.dp)
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(
+            0.8.dp,
+            if (highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        modifier = modifier.height(46.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1419,7 +1539,7 @@ private fun QuickNavCard(
                 text = title,
                 style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
                 fontWeight = FontWeight.Bold,
-                color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1
             )
         }
@@ -1435,6 +1555,10 @@ fun TotalBalanceHeroCard(
     baseCurrency: String,
     accountCount: Int,
     onAddAccountClick: () -> Unit,
+    cashBalance: Double = totalBalance,
+    assetsBalance: Double = 0.0,
+    includeAssets: Boolean = true,
+    onToggleIncludeAssets: (() -> Unit)? = null,
     onNavigateToAssets: (() -> Unit)? = null,
     backgroundStyle: HeroBackgroundStyle = HeroBackgroundStyle.SOLID,
     hideMoney: Boolean = false,
@@ -1482,6 +1606,18 @@ fun TotalBalanceHeroCard(
                         .background(gradientBrush)
                 } else Modifier
             )
+            .drawBehind {
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.08f),
+                    radius = size.minDimension * 0.6f,
+                    center = Offset(size.width * 0.92f, size.height * 0.12f)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.05f),
+                    radius = size.minDimension * 0.4f,
+                    center = Offset(size.width * 0.12f, size.height * 0.9f)
+                )
+            }
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
     ) {
         val contentColor = if (isGradient) {
@@ -1504,10 +1640,10 @@ fun TotalBalanceHeroCard(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(11.dp))
                             .background(
                                 if (isGradient)
-                                    Color.White.copy(alpha = 0.25f)
+                                    Color.White.copy(alpha = 0.22f)
                                 else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             ),
                         contentAlignment = Alignment.Center
@@ -1520,18 +1656,27 @@ fun TotalBalanceHeroCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Total Balance",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = contentColor
-                    )
+                    Column {
+                        Text(
+                            text = if (includeAssets && assetsBalance > 0.0) "TOTAL NET WORTH" else "TOTAL LIQUID BALANCE",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = contentColor.copy(alpha = 0.78f),
+                            letterSpacing = 0.9.sp
+                        )
+                        Text(
+                            text = "Total Balance",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor
+                        )
+                    }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = if (isGradient)
-                        Color.White.copy(alpha = 0.25f)
+                        Color.White.copy(alpha = 0.22f)
                     else MaterialTheme.colorScheme.surface
                 ) {
                     Text(
@@ -1544,16 +1689,62 @@ fun TotalBalanceHeroCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = CurrencyUtils.formatCurrency(totalBalance, baseCurrency, hideMoney),
-                style = MaterialTheme.typography.displayMedium.copy(fontSize = 38.sp),
+                style = MaterialTheme.typography.displayMedium.copy(fontSize = 36.sp),
                 fontWeight = FontWeight.ExtraBold,
                 color = contentColor
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // Cash vs Valuables Sub-Pill Bar (when assets exist or toggle is available)
+            if (assetsBalance > 0.0 || onToggleIncludeAssets != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isGradient) Color.Black.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = "Cash: ${CurrencyUtils.formatCurrency(cashBalance, baseCurrency, hideMoney)}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    if (assetsBalance > 0.0 && onToggleIncludeAssets != null) {
+                        Surface(
+                            onClick = onToggleIncludeAssets,
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (includeAssets) {
+                                if (isGradient) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            } else {
+                                if (isGradient) Color.Black.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
+                            }
+                        ) {
+                            Text(
+                                text = if (includeAssets) {
+                                    "+ Assets: ${CurrencyUtils.formatCurrency(assetsBalance, baseCurrency, hideMoney)}"
+                                } else {
+                                    "Assets Excluded (Tap)"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = contentColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1563,37 +1754,49 @@ fun TotalBalanceHeroCard(
                 Text(
                     text = if (accountCount == 0) "No active accounts" else "$accountCount accounts connected",
                     style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.8f)
+                    color = contentColor.copy(alpha = 0.82f)
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (onNavigateToAssets != null) {
-                        TextButton(
+                        Surface(
                             onClick = onNavigateToAssets,
-                            modifier = Modifier.height(36.dp).testTag("hero_assets_button")
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isGradient) Color.White.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                            modifier = Modifier.testTag("hero_assets_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Inventory2,
-                                contentDescription = null,
-                                tint = if (isGradient) Color.White else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Assets",
-                                fontWeight = FontWeight.Bold,
-                                color = if (isGradient) Color.White else MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    tint = if (isGradient) Color.White else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Assets",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isGradient) Color.White else MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
-                    TextButton(
+                    Surface(
                         onClick = onAddAccountClick,
-                        modifier = Modifier.height(36.dp).testTag("hero_add_account_button")
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isGradient) Color.White.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.testTag("hero_add_account_button")
                     ) {
                         Text(
                             text = "+ Add Account",
-                            fontWeight = FontWeight.Bold,
-                            color = if (isGradient) Color.White else MaterialTheme.colorScheme.primary
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isGradient) Color.White else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -1608,10 +1811,12 @@ fun TotalBalanceHeroCard(
 @Composable
 fun AccountsBreakdownRow(
     accounts: List<AccountEntity>,
+    cardsCount: Int = 0,
     hideMoney: Boolean = false,
     onAddAccountClick: () -> Unit,
     onAddSubAccountClick: (Long) -> Unit,
     onAccountClick: (Long) -> Unit,
+    onNavigateToCards: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val rootAccounts by remember(accounts) {
@@ -1674,22 +1879,53 @@ fun AccountsBreakdownRow(
                 }
             }
 
-            TextButton(
-                onClick = onAddAccountClick,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                modifier = Modifier.height(26.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "Add Account",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(
+                    onClick = onNavigateToCards,
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                    modifier = Modifier.height(26.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CreditCard,
+                            contentDescription = "Cards",
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (cardsCount > 0) "Cards ($cardsCount)" else "Cards",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+
+                TextButton(
+                    onClick = onAddAccountClick,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "Add Account",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -2103,16 +2339,26 @@ fun CompactAccountCard(
 
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = cardColor),
+        border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.18f)),
         modifier = modifier
-            .height(56.dp)
+            .height(58.dp)
             .testTag("account_card_${account.id}")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.1f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.12f)
+                        )
+                    )
+                )
+                .padding(horizontal = 9.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Row 1: Icon, Name, Currency / App
@@ -2334,8 +2580,9 @@ private fun TransactionListItem(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
         ),
+        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)),
         modifier = modifier.fillMaxWidth()
     ) {
         Row(

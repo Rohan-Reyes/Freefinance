@@ -51,6 +51,21 @@ enum class HeroBackgroundStyle(
     }
 }
 
+enum class AppThemeMode(
+    val title: String,
+    val subtitle: String
+) {
+    SYSTEM("System", "Follow device dark/light setting"),
+    DARK("Dark Mode", "Deep obsidian & high-contrast OLED surfaces"),
+    LIGHT("Light Mode", "Crisp daylight surfaces & soft accents");
+
+    companion object {
+        fun fromString(value: String?): AppThemeMode {
+            return entries.find { it.name.equals(value, ignoreCase = true) } ?: SYSTEM
+        }
+    }
+}
+
 private val Context.userDataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
 
 class UserPreferencesRepository(private val context: Context) {
@@ -61,8 +76,57 @@ class UserPreferencesRepository(private val context: Context) {
         val BASE_CURRENCY = stringPreferencesKey("base_currency")
         val HERO_BACKGROUND_STYLE = stringPreferencesKey("hero_background_style")
         val APP_THEME_PRESET = stringPreferencesKey("app_theme_preset")
+        val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
         val INCLUDE_ASSETS_IN_HERO = booleanPreferencesKey("include_assets_in_hero")
         val HIDE_MONEY = booleanPreferencesKey("hide_money")
+        val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
+        val REQUIRE_BIOMETRIC_FOR_CARDS = booleanPreferencesKey("require_biometric_for_cards")
+        val APP_LOCK_PIN = stringPreferencesKey("app_lock_pin")
+        val BIOMETRIC_TIMEOUT_MODE = stringPreferencesKey("biometric_timeout_mode")
+    }
+
+    val biometricLockEnabled: Flow<Boolean> = context.userDataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.BIOMETRIC_LOCK_ENABLED] ?: false
+        }
+
+    suspend fun setBiometricLockEnabled(enabled: Boolean) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.BIOMETRIC_LOCK_ENABLED] = enabled
+        }
+    }
+
+    val requireBiometricForCards: Flow<Boolean> = context.userDataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.REQUIRE_BIOMETRIC_FOR_CARDS] ?: false
+        }
+
+    suspend fun setRequireBiometricForCards(required: Boolean) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.REQUIRE_BIOMETRIC_FOR_CARDS] = required
+        }
+    }
+
+    val appLockPin: Flow<String> = context.userDataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.APP_LOCK_PIN] ?: ""
+        }
+
+    suspend fun setAppLockPin(pin: String) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_LOCK_PIN] = pin.trim()
+        }
+    }
+
+    val biometricTimeoutMode: Flow<String> = context.userDataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.BIOMETRIC_TIMEOUT_MODE] ?: "IMMEDIATE"
+        }
+
+    suspend fun setBiometricTimeoutMode(mode: String) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.BIOMETRIC_TIMEOUT_MODE] = mode
+        }
     }
 
     val appThemePreset: Flow<AppThemePreset> = context.userDataStore.data
@@ -73,6 +137,17 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setAppThemePreset(preset: AppThemePreset) {
         context.userDataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_THEME_PRESET] = preset.name
+        }
+    }
+
+    val appThemeMode: Flow<AppThemeMode> = context.userDataStore.data
+        .map { preferences ->
+            AppThemeMode.fromString(preferences[PreferencesKeys.APP_THEME_MODE])
+        }
+
+    suspend fun setAppThemeMode(mode: AppThemeMode) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_THEME_MODE] = mode.name
         }
     }
 

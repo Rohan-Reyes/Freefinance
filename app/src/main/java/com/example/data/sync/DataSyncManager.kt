@@ -9,6 +9,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PaymentCardEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.CompoundingFrequency
 import org.json.JSONArray
@@ -32,7 +33,8 @@ data class BackupDataDTO(
     val debts: List<DebtEntity> = emptyList(),
     val freelanceProjects: List<FreelanceProjectEntity> = emptyList(),
     val milestones: List<MilestoneEntity> = emptyList(),
-    val exchangeRates: List<ExchangeRateEntity> = emptyList()
+    val exchangeRates: List<ExchangeRateEntity> = emptyList(),
+    val paymentCards: List<PaymentCardEntity> = emptyList()
 )
 
 /**
@@ -85,6 +87,7 @@ class DataSyncManager(private val database: AppDatabase) {
         val projects = database.freelanceDao().getAllProjects().first()
         val milestones = database.freelanceDao().getAllMilestones().first()
         val exchangeRates = database.exchangeRateDao().getAllRates().first()
+        val paymentCards = database.paymentCardDao().getAllCards().first()
 
         val root = JSONObject()
         root.put("version", 1)
@@ -237,6 +240,46 @@ class DataSyncManager(private val database: AppDatabase) {
             rateArray.put(obj)
         }
         root.put("exchangeRates", rateArray)
+
+        // 8. Payment Cards
+        val cardsArray = JSONArray()
+        paymentCards.forEach { c ->
+            val obj = JSONObject().apply {
+                put("id", c.id)
+                put("cardName", c.cardName)
+                put("cardType", c.cardType)
+                put("cardNetwork", c.cardNetwork)
+                put("issuingBank", c.issuingBank)
+                put("cardholderName", c.cardholderName)
+                put("cardNumber", c.cardNumber)
+                put("expiryMonth", c.expiryMonth)
+                put("expiryYear", c.expiryYear)
+                put("cvv", c.cvv)
+                if (c.cardPinHint != null) put("cardPinHint", c.cardPinHint)
+                if (c.billingAddress != null) put("billingAddress", c.billingAddress)
+                if (c.customerServicePhone != null) put("customerServicePhone", c.customerServicePhone)
+                put("currencyCode", c.currencyCode)
+                put("color", c.color)
+                put("cardFinish", c.cardFinish)
+                put("isVirtual", c.isVirtual)
+                put("isFrozen", c.isFrozen)
+                if (c.linkedAccountId != null) put("linkedAccountId", c.linkedAccountId)
+                put("dailySpendLimit", c.dailySpendLimit)
+                put("creditLimit", c.creditLimit)
+                put("currentCreditUsed", c.currentCreditUsed)
+                put("statementBalance", c.statementBalance)
+                put("minimumPaymentDue", c.minimumPaymentDue)
+                if (c.statementDay != null) put("statementDay", c.statementDay)
+                if (c.paymentDueDay != null) put("paymentDueDay", c.paymentDueDay)
+                put("aprInterestRate", c.aprInterestRate.toDouble())
+                put("annualFee", c.annualFee)
+                if (c.rewardsProgram != null) put("rewardsProgram", c.rewardsProgram)
+                if (c.notes != null) put("notes", c.notes)
+                put("createdAt", c.createdAt)
+            }
+            cardsArray.put(obj)
+        }
+        root.put("paymentCards", cardsArray)
 
         return root.toString(2)
     }
@@ -474,6 +517,53 @@ class DataSyncManager(private val database: AppDatabase) {
             }
         }
 
+        // 8. Payment Cards
+        val paymentCards = mutableListOf<PaymentCardEntity>()
+        val cardsArray = root.optJSONArray("paymentCards")
+        if (cardsArray != null) {
+            for (i in 0 until cardsArray.length()) {
+                try {
+                    val obj = cardsArray.getJSONObject(i)
+                    paymentCards.add(
+                        PaymentCardEntity(
+                            id = obj.optLong("id", 0),
+                            cardName = obj.optString("cardName", "Card"),
+                            cardType = obj.optString("cardType", "DEBIT"),
+                            cardNetwork = obj.optString("cardNetwork", "VISA"),
+                            issuingBank = obj.optString("issuingBank", ""),
+                            cardholderName = obj.optString("cardholderName", ""),
+                            cardNumber = obj.optString("cardNumber", ""),
+                            expiryMonth = obj.optInt("expiryMonth", 12),
+                            expiryYear = obj.optInt("expiryYear", 28),
+                            cvv = obj.optString("cvv", ""),
+                            cardPinHint = obj.optString("cardPinHint").takeIf { it.isNotBlank() },
+                            billingAddress = obj.optString("billingAddress").takeIf { it.isNotBlank() },
+                            customerServicePhone = obj.optString("customerServicePhone").takeIf { it.isNotBlank() },
+                            currencyCode = obj.optString("currencyCode", "PHP"),
+                            color = obj.optInt("color", -14579213),
+                            cardFinish = obj.optString("cardFinish", "OBSIDIAN_GOLD"),
+                            isVirtual = obj.optBoolean("isVirtual", false),
+                            isFrozen = obj.optBoolean("isFrozen", false),
+                            linkedAccountId = if (obj.has("linkedAccountId") && !obj.isNull("linkedAccountId")) obj.getLong("linkedAccountId") else null,
+                            dailySpendLimit = obj.optDouble("dailySpendLimit", 0.0),
+                            creditLimit = obj.optDouble("creditLimit", 0.0),
+                            currentCreditUsed = obj.optDouble("currentCreditUsed", 0.0),
+                            statementBalance = obj.optDouble("statementBalance", 0.0),
+                            minimumPaymentDue = obj.optDouble("minimumPaymentDue", 0.0),
+                            statementDay = if (obj.has("statementDay") && !obj.isNull("statementDay")) obj.getInt("statementDay") else null,
+                            paymentDueDay = if (obj.has("paymentDueDay") && !obj.isNull("paymentDueDay")) obj.getInt("paymentDueDay") else null,
+                            aprInterestRate = obj.optDouble("aprInterestRate", 0.0).toFloat(),
+                            annualFee = obj.optDouble("annualFee", 0.0),
+                            rewardsProgram = obj.optString("rewardsProgram").takeIf { it.isNotBlank() },
+                            notes = obj.optString("notes").takeIf { it.isNotBlank() },
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                        )
+                    )
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         return BackupDataDTO(
             version = version,
             exportedAt = exportedAt,
@@ -485,7 +575,8 @@ class DataSyncManager(private val database: AppDatabase) {
             debts = debts,
             freelanceProjects = projects,
             milestones = milestones,
-            exchangeRates = exchangeRates
+            exchangeRates = exchangeRates,
+            paymentCards = paymentCards
         )
     }
 
@@ -515,6 +606,7 @@ class DataSyncManager(private val database: AppDatabase) {
                     db.execSQL("DELETE FROM freelance_projects")
                     db.execSQL("DELETE FROM debts")
                     db.execSQL("DELETE FROM exchange_rates")
+                    db.execSQL("DELETE FROM payment_cards")
                     db.execSQL("DELETE FROM accounts")
                     db.execSQL("DELETE FROM categories")
 
@@ -525,6 +617,10 @@ class DataSyncManager(private val database: AppDatabase) {
 
                     if (dto.accounts.isNotEmpty()) {
                         database.accountDao().insertAccounts(dto.accounts)
+                    }
+
+                    if (dto.paymentCards.isNotEmpty()) {
+                        database.paymentCardDao().insertCards(dto.paymentCards)
                     }
 
                     if (dto.exchangeRates.isNotEmpty()) {
@@ -558,7 +654,7 @@ class DataSyncManager(private val database: AppDatabase) {
 
             val totalImported = dto.categories.size + dto.accounts.size + dto.transactions.size +
                     dto.budgets.size + dto.debts.size + dto.freelanceProjects.size +
-                    dto.milestones.size + dto.exchangeRates.size
+                    dto.milestones.size + dto.exchangeRates.size + dto.paymentCards.size
 
             Result.success(totalImported)
         } catch (e: Exception) {

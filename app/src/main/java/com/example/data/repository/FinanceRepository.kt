@@ -7,6 +7,7 @@ import com.example.data.local.dao.CategoryDao
 import com.example.data.local.dao.DebtDao
 import com.example.data.local.dao.ExchangeRateDao
 import com.example.data.local.dao.FreelanceDao
+import com.example.data.local.dao.PaymentCardDao
 import com.example.data.local.dao.PlannedPayoutDao
 import com.example.data.local.dao.ReceiptDao
 import com.example.data.local.dao.TransactionDao
@@ -18,6 +19,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PaymentCardEntity
 import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
@@ -46,7 +48,8 @@ class FinanceRepository(
     private val exchangeRateDao: ExchangeRateDao,
     private val receiptDao: ReceiptDao,
     private val assetDao: AssetDao,
-    private val plannedPayoutDao: PlannedPayoutDao
+    private val plannedPayoutDao: PlannedPayoutDao,
+    private val paymentCardDao: PaymentCardDao? = null
 ) {
 
     // --- Assets & Valuables ---
@@ -559,5 +562,124 @@ class FinanceRepository(
             paidTransactionId = null
         )
         plannedPayoutDao.update(reverted)
+    }
+
+    // --- Payment Cards (Debit Linked to Account/Sub-Account & Credit Limit Tracker) ---
+    val allPaymentCards: Flow<List<PaymentCardEntity>> =
+        paymentCardDao?.getAllCards() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    fun getCardsForAccount(accountId: Long): Flow<List<PaymentCardEntity>> =
+        paymentCardDao?.getCardsForAccount(accountId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    suspend fun insertPaymentCard(card: PaymentCardEntity): Long =
+        paymentCardDao?.insertCard(card) ?: 0L
+
+    suspend fun updatePaymentCard(card: PaymentCardEntity) {
+        paymentCardDao?.updateCard(card)
+    }
+
+    suspend fun deletePaymentCard(card: PaymentCardEntity) {
+        paymentCardDao?.deleteCard(card)
+    }
+
+    suspend fun toggleCardFrozen(cardId: Long, isFrozen: Boolean) {
+        paymentCardDao?.updateCardFrozenState(cardId, isFrozen)
+    }
+
+    /**
+     * Logs a purchase/charge on a Payment Card:
+     * - If Debit/Prepaid/Virtual with a connected `linkedAccountId` (or user-selected accountId):
+     *   Logs a Cleared Expense transaction on that connected Account or Sub-Account and deducts its balance.
+     * - If Credit Card:
+     *   Increases `currentCreditUsed` on the card to track utilization against `creditLimit`.
+     */
+    suspend fun logCardCharge(
+        cardId: Long,
+        amount: Double,
+        categoryId: Long? = null,
+        merchantOrNote: String? = null,
+        overrideAccountId: Long? = null
+    ): TransactionEntity? {
+        val card = paymentCardDao?.getCardByIdImmediate(cardId) ?: return null
+        val cleanNote = buildString {
+            append("[${card.cardName} ••${card.lastFourDigits}]")
+            if (!merchantOrNote.isNullOrBlank()) {
+                append(" ")
+                append(merchantOrNote.trim())
+            }
+        }
+
+        return if (card.isCreditCard) {
+            val newUsed = (card.currentCreditUsed + amount).coerceAtLeast(0.0)
+            paymentCardDao.updateCard(
+                card.copy(currentCreditUsed = newUsed)
+            )
+            // If user explicitly linked an account to also record in ledger or overrideAccountId is passed
+            val targetAccId = overrideAccountId
+            if (targetAccId != null) {
+                val txId = addQuickTransaction(
+                    amount = amount,
+                    type = TransactionType.EXPENSE,
+                    accountId = targetAccId,
+                    categoryId = categoryId,
+                    labels = listOf("Card Spend", "Credit Card", card.cardName),
+                    note = cleanNote
+                )
+                transactionDao.getTransactionByIdImmediate(txId)
+            } else {
+                null
+            }
+        } else {
+            // Debit / Virtual / Prepaid card connected to an Account or Sub-Account
+            val targetAccId = overrideAccountId ?: card.linkedAccountId ?: return null
+            val txId = addQuickTransaction(
+                amount = amount,
+                type = TransactionType.EXPENSE,
+                accountId = targetAccId,
+                categoryId = categoryId,
+                labels = listOf("Card Spend", card.cardType, card.cardName),
+                note = cleanNote
+            )
+            transactionDao.getTransactionByIdImmediate(txId)
+        }
+    }
+
+    /**
+     * Pays off a Credit Card balance (full, statement, or custom amount) from a chosen Account or Sub-Account:
+     * 1. Deducts `paymentAmount` from `sourceAccountId` via a Cleared Expense transaction.
+     * 2. Reduces `currentCreditUsed` and `statementBalance` on the Credit Card, restoring available credit limit.
+     */
+    suspend fun payCreditCardBill(
+        cardId: Long,
+        paymentAmount: Double,
+        sourceAccountId: Long,
+        note: String? = null
+    ): TransactionEntity? {
+        val card = paymentCardDao?.getCardByIdImmediate(cardId) ?: return null
+        if (paymentAmount <= 0.0) return null
+
+        val newUsed = (card.currentCreditUsed - paymentAmount).coerceAtLeast(0.0)
+        val newStatement = (card.statementBalance - paymentAmount).coerceAtLeast(0.0)
+        val newMinDue = if (newStatement <= 0.0) 0.0 else (card.minimumPaymentDue - paymentAmount).coerceAtLeast(0.0)
+
+        paymentCardDao.updateCard(
+            card.copy(
+                currentCreditUsed = newUsed,
+                statementBalance = newStatement,
+                minimumPaymentDue = newMinDue
+            )
+        )
+
+        val paymentNote = note?.takeIf { it.isNotBlank() }
+            ?: "Credit Card Bill Payment: ${card.cardName} (••${card.lastFourDigits})"
+
+        val txId = addQuickTransaction(
+            amount = paymentAmount,
+            type = TransactionType.EXPENSE,
+            accountId = sourceAccountId,
+            labels = listOf("Credit Card Payment", card.cardName),
+            note = paymentNote
+        )
+        return transactionDao.getTransactionByIdImmediate(txId)
     }
 }

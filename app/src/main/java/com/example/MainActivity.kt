@@ -1,12 +1,12 @@
 package com.example
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,12 +21,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
+import com.example.ui.components.BiometricLockScreen
 import com.example.ui.components.TransactionSuccessAnimationOverlay
 import com.example.ui.screens.AccountLogScreen
 import com.example.ui.screens.AnalyticsScreen
 import com.example.ui.screens.ApkReleaseScreen
 import com.example.ui.screens.AssetsScreen
 import com.example.ui.screens.BudgetScreen
+import com.example.ui.screens.CardsScreen
 import com.example.ui.screens.CategoryManagerScreen
 import com.example.ui.screens.CommissionScreen
 import com.example.ui.screens.DashboardScreen
@@ -55,10 +58,11 @@ enum class MainDestination {
   RECEIPTS_INBOX,
   ASSETS,
   APK_RELEASES,
-  ANALYTICS
+  ANALYTICS,
+  CARDS
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
   private val dashboardViewModel: DashboardViewModel by viewModels {
     DashboardViewModel.provideFactory(this)
@@ -68,8 +72,14 @@ class MainActivity : ComponentActivity() {
   private var quickAddState by mutableStateOf(false)
   private var quickPicState by mutableStateOf(false)
 
+  override fun onPause() {
+    super.onPause()
+    dashboardViewModel.onAppBackgrounded()
+  }
+
   override fun onResume() {
     super.onResume()
+    dashboardViewModel.onAppResumed()
     com.example.ui.widget.FinanceAppWidgetManager.updateAllWidgets(applicationContext)
   }
 
@@ -81,8 +91,15 @@ class MainActivity : ComponentActivity() {
 
     setContent {
       val appThemePreset by dashboardViewModel.appThemePreset.collectAsState()
+      val appThemeMode by dashboardViewModel.appThemeMode.collectAsState()
+      val isAppLocked by dashboardViewModel.isAppLocked.collectAsState()
+      val biometricLockEnabled by dashboardViewModel.biometricLockEnabled.collectAsState()
+      val appLockPin by dashboardViewModel.appLockPin.collectAsState()
 
-      MyApplicationTheme(themePreset = appThemePreset) {
+      MyApplicationTheme(
+        themeMode = appThemeMode,
+        themePreset = appThemePreset
+      ) {
         var currentDestination by remember { mutableStateOf(destinationState) }
         var selectedAccountId by remember { mutableStateOf<Long?>(null) }
         val openQuickAdd = quickAddState
@@ -92,7 +109,7 @@ class MainActivity : ComponentActivity() {
           currentDestination = destinationState
         }
 
-        BackHandler(enabled = currentDestination != MainDestination.DASHBOARD) {
+        BackHandler(enabled = currentDestination != MainDestination.DASHBOARD && !(isAppLocked && biometricLockEnabled)) {
           currentDestination = MainDestination.DASHBOARD
           destinationState = MainDestination.DASHBOARD
           quickPicState = false
@@ -100,179 +117,222 @@ class MainActivity : ComponentActivity() {
 
         Box(modifier = Modifier.fillMaxSize()) {
           AnimatedContent(
-          targetState = currentDestination,
-          transitionSpec = {
-            if (targetState == MainDestination.DASHBOARD) {
-              // Navigating back to Dashboard: slide out to right, fade in
-              (slideInHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeIn(animationSpec = tween(300)))
-                .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(200)))
-            } else {
-              // Navigating into a section/screen: slide in from right, fade in
-              (slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300)))
-                .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeOut(animationSpec = tween(200)))
-            }
-          },
-          label = "ScreenTransition",
-          modifier = Modifier.fillMaxSize()
-        ) { destination ->
-          when (destination) {
-            MainDestination.DASHBOARD -> {
-              DashboardScreen(
-                viewModel = dashboardViewModel,
-                initialOpenQuickAdd = openQuickAdd,
-                onQuickAddHandled = { quickAddState = false },
-                onNavigateToAccountLog = { accountId ->
-                  selectedAccountId = accountId
-                  currentDestination = MainDestination.ACCOUNT_LOG
-                  destinationState = MainDestination.ACCOUNT_LOG
-                },
-                onNavigateToCategories = {
-                  currentDestination = MainDestination.CATEGORY_MANAGER
-                  destinationState = MainDestination.CATEGORY_MANAGER
-                },
-                onNavigateToDebts = {
-                  currentDestination = MainDestination.DEBTS
-                  destinationState = MainDestination.DEBTS
-                },
-                onNavigateToCustomize = {
-                  currentDestination = MainDestination.CUSTOMIZE_DASHBOARD
-                  destinationState = MainDestination.CUSTOMIZE_DASHBOARD
-                },
-                onNavigateToCommission = {
-                  currentDestination = MainDestination.COMMISSIONS
-                  destinationState = MainDestination.COMMISSIONS
-                },
-                onNavigateToSettings = {
-                  currentDestination = MainDestination.SETTINGS
-                  destinationState = MainDestination.SETTINGS
-                },
-                onNavigateToBudgets = {
-                  currentDestination = MainDestination.BUDGETS
-                  destinationState = MainDestination.BUDGETS
-                },
-                onNavigateToSubscriptions = {
-                  currentDestination = MainDestination.SUBSCRIPTIONS
-                  destinationState = MainDestination.SUBSCRIPTIONS
-                },
-                onNavigateToRecords = {
-                  currentDestination = MainDestination.RECORDS
-                  destinationState = MainDestination.RECORDS
-                },
-                onNavigateToWidgets = {
-                  currentDestination = MainDestination.HOME_SCREEN_WIDGETS
-                  destinationState = MainDestination.HOME_SCREEN_WIDGETS
-                },
-                onNavigateToReceiptInbox = {
-                  currentDestination = MainDestination.RECEIPTS_INBOX
-                  destinationState = MainDestination.RECEIPTS_INBOX
-                },
-                onNavigateToAssets = {
-                  currentDestination = MainDestination.ASSETS
-                  destinationState = MainDestination.ASSETS
-                },
-                onNavigateToAnalytics = {
-                  currentDestination = MainDestination.ANALYTICS
-                  destinationState = MainDestination.ANALYTICS
-                }
-              )
-            }
-            MainDestination.ACCOUNT_LOG -> {
-              AccountLogScreen(
-                accountId = selectedAccountId ?: 0L,
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.CATEGORY_MANAGER -> {
-              CategoryManagerScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.DEBTS -> {
-              DebtScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.CUSTOMIZE_DASHBOARD -> {
-              EditDashboardScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.COMMISSIONS -> {
-              CommissionScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.BUDGETS -> {
-              BudgetScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.SUBSCRIPTIONS -> {
-              SubscriptionsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.RECORDS -> {
-              RecordsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.SETTINGS -> {
-              SettingsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD },
-                onNavigateToWidgets = { currentDestination = MainDestination.HOME_SCREEN_WIDGETS },
-                onNavigateToApkReleases = { currentDestination = MainDestination.APK_RELEASES },
-                onNavigateToAnalytics = { currentDestination = MainDestination.ANALYTICS }
-              )
-            }
-            MainDestination.HOME_SCREEN_WIDGETS -> {
-              HomeScreenWidgetsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.RECEIPTS_INBOX -> {
-              ReceiptInboxScreen(
-                viewModel = dashboardViewModel,
-                initialTriggerCamera = openQuickPic,
-                onNavigateBack = {
-                  quickPicState = false
-                  currentDestination = MainDestination.DASHBOARD
-                  destinationState = MainDestination.DASHBOARD
-                }
-              )
-            }
-            MainDestination.ASSETS -> {
-              AssetsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
-            }
-            MainDestination.APK_RELEASES -> {
-              ApkReleaseScreen(
-                onNavigateBack = { currentDestination = MainDestination.SETTINGS }
-              )
-            }
-            MainDestination.ANALYTICS -> {
-              AnalyticsScreen(
-                viewModel = dashboardViewModel,
-                onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
-              )
+            targetState = currentDestination,
+            transitionSpec = {
+              if (targetState == MainDestination.DASHBOARD) {
+                // Navigating back to Dashboard: slide out to right, fade in
+                (slideInHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeIn(animationSpec = tween(300)))
+                  .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(200)))
+              } else {
+                // Navigating into a section/screen: slide in from right, fade in
+                (slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300)))
+                  .togetherWith(slideOutHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeOut(animationSpec = tween(200)))
+              }
+            },
+            label = "ScreenTransition",
+            modifier = Modifier.fillMaxSize()
+          ) { destination ->
+            when (destination) {
+              MainDestination.DASHBOARD -> {
+                DashboardScreen(
+                  viewModel = dashboardViewModel,
+                  initialOpenQuickAdd = openQuickAdd,
+                  onQuickAddHandled = { quickAddState = false },
+                  onNavigateToAccountLog = { accountId ->
+                    selectedAccountId = accountId
+                    currentDestination = MainDestination.ACCOUNT_LOG
+                    destinationState = MainDestination.ACCOUNT_LOG
+                  },
+                  onNavigateToCategories = {
+                    currentDestination = MainDestination.CATEGORY_MANAGER
+                    destinationState = MainDestination.CATEGORY_MANAGER
+                  },
+                  onNavigateToDebts = {
+                    currentDestination = MainDestination.DEBTS
+                    destinationState = MainDestination.DEBTS
+                  },
+                  onNavigateToCustomize = {
+                    currentDestination = MainDestination.CUSTOMIZE_DASHBOARD
+                    destinationState = MainDestination.CUSTOMIZE_DASHBOARD
+                  },
+                  onNavigateToCommission = {
+                    currentDestination = MainDestination.COMMISSIONS
+                    destinationState = MainDestination.COMMISSIONS
+                  },
+                  onNavigateToSettings = {
+                    currentDestination = MainDestination.SETTINGS
+                    destinationState = MainDestination.SETTINGS
+                  },
+                  onNavigateToBudgets = {
+                    currentDestination = MainDestination.BUDGETS
+                    destinationState = MainDestination.BUDGETS
+                  },
+                  onNavigateToSubscriptions = {
+                    currentDestination = MainDestination.SUBSCRIPTIONS
+                    destinationState = MainDestination.SUBSCRIPTIONS
+                  },
+                  onNavigateToRecords = {
+                    currentDestination = MainDestination.RECORDS
+                    destinationState = MainDestination.RECORDS
+                  },
+                  onNavigateToWidgets = {
+                    currentDestination = MainDestination.HOME_SCREEN_WIDGETS
+                    destinationState = MainDestination.HOME_SCREEN_WIDGETS
+                  },
+                  onNavigateToReceiptInbox = {
+                    currentDestination = MainDestination.RECEIPTS_INBOX
+                    destinationState = MainDestination.RECEIPTS_INBOX
+                  },
+                  onNavigateToAssets = {
+                    currentDestination = MainDestination.ASSETS
+                    destinationState = MainDestination.ASSETS
+                  },
+                  onNavigateToAnalytics = {
+                    currentDestination = MainDestination.ANALYTICS
+                    destinationState = MainDestination.ANALYTICS
+                  },
+                  onNavigateToCards = {
+                    currentDestination = MainDestination.CARDS
+                    destinationState = MainDestination.CARDS
+                  }
+                )
+              }
+              MainDestination.ACCOUNT_LOG -> {
+                AccountLogScreen(
+                  accountId = selectedAccountId ?: 0L,
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD },
+                  onNavigateToCards = {
+                    currentDestination = MainDestination.CARDS
+                    destinationState = MainDestination.CARDS
+                  }
+                )
+              }
+              MainDestination.CATEGORY_MANAGER -> {
+                CategoryManagerScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.DEBTS -> {
+                DebtScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.CUSTOMIZE_DASHBOARD -> {
+                EditDashboardScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.COMMISSIONS -> {
+                CommissionScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.BUDGETS -> {
+                BudgetScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.SUBSCRIPTIONS -> {
+                SubscriptionsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.RECORDS -> {
+                RecordsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.SETTINGS -> {
+                SettingsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD },
+                  onNavigateToWidgets = { currentDestination = MainDestination.HOME_SCREEN_WIDGETS },
+                  onNavigateToApkReleases = { currentDestination = MainDestination.APK_RELEASES },
+                  onNavigateToAnalytics = { currentDestination = MainDestination.ANALYTICS },
+                  onNavigateToCustomize = { currentDestination = MainDestination.CUSTOMIZE_DASHBOARD },
+                  onNavigateToCategories = { currentDestination = MainDestination.CATEGORY_MANAGER },
+                  onNavigateToCards = {
+                    currentDestination = MainDestination.CARDS
+                    destinationState = MainDestination.CARDS
+                  }
+                )
+              }
+              MainDestination.HOME_SCREEN_WIDGETS -> {
+                HomeScreenWidgetsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.RECEIPTS_INBOX -> {
+                ReceiptInboxScreen(
+                  viewModel = dashboardViewModel,
+                  initialTriggerCamera = openQuickPic,
+                  onNavigateBack = {
+                    quickPicState = false
+                    currentDestination = MainDestination.DASHBOARD
+                    destinationState = MainDestination.DASHBOARD
+                  }
+                )
+              }
+              MainDestination.ASSETS -> {
+                AssetsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.APK_RELEASES -> {
+                ApkReleaseScreen(
+                  onNavigateBack = { currentDestination = MainDestination.SETTINGS }
+                )
+              }
+              MainDestination.ANALYTICS -> {
+                AnalyticsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = { currentDestination = MainDestination.DASHBOARD }
+                )
+              }
+              MainDestination.CARDS -> {
+                CardsScreen(
+                  viewModel = dashboardViewModel,
+                  onNavigateBack = {
+                    currentDestination = MainDestination.DASHBOARD
+                    destinationState = MainDestination.DASHBOARD
+                  },
+                  onNavigateToAccountLog = { accountId ->
+                    selectedAccountId = accountId
+                    currentDestination = MainDestination.ACCOUNT_LOG
+                    destinationState = MainDestination.ACCOUNT_LOG
+                  }
+                )
+              }
             }
           }
-        }
 
-        TransactionSuccessAnimationOverlay(viewModel = dashboardViewModel)
-      }
+          TransactionSuccessAnimationOverlay(viewModel = dashboardViewModel)
+
+          AnimatedVisibility(
+            visible = isAppLocked && biometricLockEnabled,
+            enter = fadeIn(animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(250))
+          ) {
+            BiometricLockScreen(
+              savedPin = appLockPin,
+              onUnlocked = { dashboardViewModel.unlockApp() },
+              onSetInitialPin = { newPin ->
+                dashboardViewModel.setAppLockPin(newPin)
+                dashboardViewModel.unlockApp()
+              }
+            )
+          }
+        }
       }
     }
   }
@@ -297,6 +357,7 @@ class MainActivity : ComponentActivity() {
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "APK" -> MainDestination.APK_RELEASES
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "ANALYTICS" -> MainDestination.ANALYTICS
       intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "FORECAST" -> MainDestination.ANALYTICS
+      intent?.getStringExtra("OPEN_DESTINATION")?.uppercase() == "CARDS" -> MainDestination.CARDS
       else -> MainDestination.DASHBOARD
     }
     destinationState = dest

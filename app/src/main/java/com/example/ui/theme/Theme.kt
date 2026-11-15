@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.example.data.preferences.AppThemeMode
 import com.example.data.preferences.AppThemePreset
 
 // 1. EMERALD AURORA
@@ -67,7 +68,10 @@ private val OceanLightScheme = lightColorScheme(
     primaryContainer = OceanPrimaryContainerLight,
     onPrimaryContainer = OceanOnPrimaryContainerLight,
     secondary = OceanSecondaryLight,
-    tertiary = OceanTertiaryLight
+    tertiary = OceanTertiaryLight,
+    background = Color(0xFFF6F9FF),
+    surface = Color(0xFFF6F9FF),
+    surfaceVariant = Color(0xFFE0E8F5)
 )
 
 // 3. SUNSET GLOW
@@ -89,7 +93,10 @@ private val SunsetLightScheme = lightColorScheme(
     primaryContainer = SunsetPrimaryContainerLight,
     onPrimaryContainer = SunsetOnPrimaryContainerLight,
     secondary = SunsetSecondaryLight,
-    tertiary = SunsetTertiaryLight
+    tertiary = SunsetTertiaryLight,
+    background = Color(0xFFFFF8F7),
+    surface = Color(0xFFFFF8F7),
+    surfaceVariant = Color(0xFFF5E1E3)
 )
 
 // 4. MIDNIGHT NEBULA
@@ -111,7 +118,10 @@ private val NebulaLightScheme = lightColorScheme(
     primaryContainer = NebulaPrimaryContainerLight,
     onPrimaryContainer = NebulaOnPrimaryContainerLight,
     secondary = NebulaSecondaryLight,
-    tertiary = NebulaTertiaryLight
+    tertiary = NebulaTertiaryLight,
+    background = Color(0xFFFAF7FF),
+    surface = Color(0xFFFAF7FF),
+    surfaceVariant = Color(0xFFECE2F5)
 )
 
 // 5. GOLDEN LUXE
@@ -133,7 +143,10 @@ private val LuxeLightScheme = lightColorScheme(
     primaryContainer = LuxePrimaryContainerLight,
     onPrimaryContainer = LuxeOnPrimaryContainerLight,
     secondary = LuxeSecondaryLight,
-    tertiary = LuxeTertiaryLight
+    tertiary = LuxeTertiaryLight,
+    background = Color(0xFFFFFBF5),
+    surface = Color(0xFFFFFBF5),
+    surfaceVariant = Color(0xFFF2E8D5)
 )
 
 // 6. CYBERPUNK NEON
@@ -151,8 +164,14 @@ private val CyberDarkScheme = darkColorScheme(
 
 private val CyberLightScheme = lightColorScheme(
     primary = CyberPrimaryLight,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFB8F3FF),
+    onPrimaryContainer = Color(0xFF001F24),
     secondary = CyberSecondaryLight,
-    tertiary = CyberTertiaryLight
+    tertiary = CyberTertiaryLight,
+    background = Color(0xFFF4FAFC),
+    surface = Color(0xFFF4FAFC),
+    surfaceVariant = Color(0xFFDCEBF0)
 )
 
 // 7. TITANIUM SLATE
@@ -167,12 +186,23 @@ private val SlateDarkScheme = darkColorScheme(
 )
 
 private val SlateLightScheme = lightColorScheme(
-    primary = SlatePrimaryLight
+    primary = SlatePrimaryLight,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE2E8F0),
+    onPrimaryContainer = Color(0xFF0F172A),
+    background = Color(0xFFF8FAFC),
+    surface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0xFFE2E8F0)
 )
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    darkTheme: Boolean = when (themeMode) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.DARK -> true
+        AppThemeMode.LIGHT -> false
+    },
     themePreset: AppThemePreset = AppThemePreset.EMERALD_AURORA,
     content: @Composable () -> Unit,
 ) {

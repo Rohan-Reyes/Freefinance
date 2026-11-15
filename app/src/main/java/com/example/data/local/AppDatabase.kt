@@ -15,6 +15,7 @@ import com.example.data.local.dao.CategoryDao
 import com.example.data.local.dao.DebtDao
 import com.example.data.local.dao.ExchangeRateDao
 import com.example.data.local.dao.FreelanceDao
+import com.example.data.local.dao.PaymentCardDao
 import com.example.data.local.dao.PlannedPayoutDao
 import com.example.data.local.dao.ReceiptDao
 import com.example.data.local.dao.TransactionDao
@@ -26,6 +27,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
+import com.example.data.local.entity.PaymentCardEntity
 import com.example.data.local.entity.PlannedPayoutEntity
 import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
@@ -46,9 +48,10 @@ import com.example.data.local.entity.TransactionEntity
         ExchangeRateEntity::class,
         ReceiptEntity::class,
         AssetEntity::class,
-        PlannedPayoutEntity::class
+        PlannedPayoutEntity::class,
+        PaymentCardEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -64,6 +67,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun assetDao(): AssetDao
     abstract fun plannedPayoutDao(): PlannedPayoutDao
+    abstract fun paymentCardDao(): PaymentCardDao
 
     companion object {
         const val DATABASE_NAME = "finance_tracker_db"
@@ -159,6 +163,46 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `payment_cards` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `card_name` TEXT NOT NULL,
+                        `card_type` TEXT NOT NULL,
+                        `card_network` TEXT NOT NULL,
+                        `issuing_bank` TEXT NOT NULL,
+                        `cardholder_name` TEXT NOT NULL,
+                        `card_number` TEXT NOT NULL,
+                        `expiry_month` INTEGER NOT NULL,
+                        `expiry_year` INTEGER NOT NULL,
+                        `cvv` TEXT NOT NULL,
+                        `card_pin_hint` TEXT,
+                        `billing_address` TEXT,
+                        `customer_service_phone` TEXT,
+                        `currency_code` TEXT NOT NULL DEFAULT 'PHP',
+                        `color` INTEGER NOT NULL DEFAULT -14579213,
+                        `card_finish` TEXT NOT NULL DEFAULT 'OBSIDIAN_GOLD',
+                        `is_virtual` INTEGER NOT NULL DEFAULT 0,
+                        `is_frozen` INTEGER NOT NULL DEFAULT 0,
+                        `linked_account_id` INTEGER DEFAULT NULL,
+                        `daily_spend_limit` REAL NOT NULL DEFAULT 0.0,
+                        `credit_limit` REAL NOT NULL DEFAULT 0.0,
+                        `current_credit_used` REAL NOT NULL DEFAULT 0.0,
+                        `statement_balance` REAL NOT NULL DEFAULT 0.0,
+                        `minimum_payment_due` REAL NOT NULL DEFAULT 0.0,
+                        `statement_day` INTEGER DEFAULT NULL,
+                        `payment_due_day` INTEGER DEFAULT NULL,
+                        `apr_interest_rate` REAL NOT NULL DEFAULT 0.0,
+                        `annual_fee` REAL NOT NULL DEFAULT 0.0,
+                        `rewards_program` TEXT,
+                        `notes` TEXT,
+                        `created_at` INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -169,7 +213,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigration()
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

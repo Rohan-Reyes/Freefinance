@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
@@ -123,11 +124,13 @@ import java.util.Locale
 fun AccountLogScreen(
     accountId: Long,
     viewModel: DashboardViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToCards: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val accounts by viewModel.allAccounts.collectAsState()
     val categories by viewModel.allCategories.collectAsState()
+    val linkedCards by remember(accountId) { viewModel.getCardsForAccount(accountId) }.collectAsState(initial = emptyList())
     val hideMoney by viewModel.hideMoney.collectAsState()
     val canUndo by viewModel.canUndo.collectAsState()
     val account = accounts.find { it.id == accountId }
@@ -337,6 +340,57 @@ fun AccountLogScreen(
                         BankAppLauncher.launchBankApp(context, account.name, account.linkedAppPackage)
                     }
                 )
+            }
+
+            // Connected Debit / Virtual Cards Strip for this Account or Sub-Account
+            if (linkedCards.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CreditCard,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Linked Cards (${linkedCards.size}):",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        linkedCards.take(2).forEach { card ->
+                            Surface(
+                                onClick = onNavigateToCards,
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                            ) {
+                                Text(
+                                    text = "${card.cardName} (••${card.lastFourDigits})",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick = onNavigateToCards,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Text("Cards Vault →", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             // Tab Navigation: Ledger vs Account Analytics
