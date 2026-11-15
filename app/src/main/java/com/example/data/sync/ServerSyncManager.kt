@@ -24,12 +24,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
@@ -97,6 +100,13 @@ class ServerSyncManager private constructor(context: Context) {
             "receipts_inbox" to listOf("converted_transaction_id")
         )
 
+        /** Photo columns (local file paths) and the extra synced key carrying the photo's SHA-256 on the server. */
+        private val IMAGE_COLUMNS: Map<String, Pair<String, String>> = mapOf(
+            "receipts_inbox" to Pair("image_path", "image_sha256"),
+            "transactions" to Pair("proof_image_uri", "proof_sha256")
+        )
+        private val SHA256_RE = Regex("^[a-f0-9]{64}$")
+
         /** Columns that change as a side effect of other rows and must not be logged as user edits. */
         private val DERIVED_COLUMNS: Map<String, Set<String>> = mapOf(
             "accounts" to setOf("current_balance")
@@ -117,6 +127,7 @@ class ServerSyncManager private constructor(context: Context) {
     private val database: AppDatabase = AppDatabase.getDatabase(appContext)
     private val userPrefs = UserPreferencesRepository(appContext)
     private val sp: SharedPreferences = appContext.getSharedPreferences("ff_server_sync", Context.MODE_PRIVATE)
+    private val imgSp: SharedPreferences = appContext.getSharedPreferences("ff_server_images", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
     private val http = OkHttpClient.Builder()
@@ -297,6 +308,7 @@ class ServerSyncManager private constructor(context: Context) {
                 val globalId = toGlobal(e.rowId)
                 if (globalId <= 0) continue
                 val row = if (e.op == "D") null else readRow(db, e.table, e.rowId)
+                if (row != null) attachImageHash(base, token, e.table, row)
                 val change = JSONObject()
                     .put("tbl", e.table)
                     .put("id", globalId)
@@ -373,7 +385,8 @@ class ServerSyncManager private constructor(context: Context) {
             val res = request(base, "GET", "/api/sync/pull?since=$cursor", null, token)
             val records = res.getJSONArray("records")
             if (records.length() > 0) {
-                val (changed, remoteCurrency) = applyRemote(records)
+                val images = prefetchImages(base, token, records) // network happens outside the DB transaction
+                val (changed, remoteCurrency) = applyRemote(records, images)
                 if (changed) appliedAny = true
                 if (remoteCurrency != null) {
                     userPrefs.setBaseCurrency(remoteCurrency)
@@ -394,7 +407,7 @@ class ServerSyncManager private constructor(context: Context) {
      * Applies a batch of server records in one transaction.
      * Returns (any row changed, base currency from the server if it was in the batch).
      */
-    private fun applyRemote(records: JSONArray): Pair<Boolean, String?> {
+    private fun applyRemote(records: JSONArray, images: Map<String, String>): Pair<Boolean, String?> {
         var changed = false
         var remoteCurrency: String? = null
         database.runInTransaction(Runnable {
@@ -430,7 +443,7 @@ class ServerSyncManager private constructor(context: Context) {
                         db.execSQL("DELETE FROM `$table` WHERE id = ?", arrayOf<Any?>(localId))
                     } else {
                         val data = r.optJSONObject("data") ?: continue
-                        upsertRow(db, table, columns, fkCols, localId, data)
+                        upsertRow(db, table, columns, fkCols, localId, data, images)
                     }
                     changed = true
                 } catch (e: Exception) {
@@ -449,7 +462,8 @@ class ServerSyncManager private constructor(context: Context) {
         columns: Set<String>,
         fkCols: List<String>,
         localId: Long,
-        data: JSONObject
+        data: JSONObject,
+        images: Map<String, String>
     ) {
         val cols = ArrayList<String>()
         val values = ArrayList<Any?>()
@@ -462,6 +476,15 @@ class ServerSyncManager private constructor(context: Context) {
             if (key in fkCols && v is Number) v = toLocal(v.toLong())
             cols.add(key)
             values.add(v)
+        }
+        // Point photo columns at this device's local copy of the synced image.
+        IMAGE_COLUMNS[table]?.let { (pathCol, hashCol) ->
+            val hash = data.optString(hashCol, "")
+            if (SHA256_RE.matches(hash) && pathCol in columns) {
+                val local: Any? = images[hash] ?: if (table == "receipts_inbox") "" else null
+                val idx = cols.indexOf(pathCol)
+                if (idx >= 0) values[idx] = local else { cols.add(pathCol); values.add(local) }
+            }
         }
         if (cols.isNotEmpty()) {
             val set = cols.joinToString(", ") { "`$it` = ?" }
@@ -544,6 +567,103 @@ class ServerSyncManager private constructor(context: Context) {
         db.query("SELECT ts FROM ff_sync_log WHERE tbl = ? AND row_id = ?", arrayOf<Any?>(table, localId)).use { c ->
             return if (c.moveToFirst()) c.getLong(0) else null
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Photos (receipts / transaction proofs)
+    // ------------------------------------------------------------------
+
+    /** Uploads the row's local photo (if any) and adds its SHA-256 under the synced key. Never blocks sync on bad files. */
+    private fun attachImageHash(base: String, token: String, table: String, row: JSONObject) {
+        val (pathCol, hashCol) = IMAGE_COLUMNS[table] ?: return
+        if (!row.has(pathCol) || row.isNull(pathCol)) return
+        val file = File(row.optString(pathCol))
+        if (!file.isFile) return
+        val cacheKey = "hash:${file.absolutePath}:${file.lastModified()}:${file.length()}"
+        val hash = imgSp.getString(cacheKey, null) ?: sha256Hex(file).also { imgSp.edit().putString(cacheKey, it).apply() }
+        imgSp.edit().putString("path:$hash", file.absolutePath).apply()
+        try {
+            ensureUploaded(base, token, hash, file)
+        } catch (e: ServerSyncException) {
+            if (e.code == 413 || e.code == 415 || e.code == 400) {
+                android.util.Log.w("ServerSync", "Photo not synced (${e.message}): ${file.name}")
+                return
+            }
+            throw e
+        }
+        row.put(hashCol, hash)
+    }
+
+    private fun ensureUploaded(base: String, token: String, hash: String, file: File) {
+        if (imgSp.getBoolean("up:$hash", false)) return
+        val url = "$base/api/files/$hash"
+        val exists = try {
+            http.newCall(Request.Builder().url(url).head().header("Authorization", "Bearer $token").build()).execute().use { it.code == 200 }
+        } catch (e: IOException) {
+            throw ServerSyncException("Can't reach server: ${e.message ?: "network error"}")
+        }
+        if (!exists) {
+            val req = Request.Builder().url(url).header("Authorization", "Bearer $token")
+                .put(file.asRequestBody("application/octet-stream".toMediaType())).build()
+            try {
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        val msg = try { JSONObject(resp.body?.string().orEmpty()).optString("error") } catch (_: Exception) { "" }
+                        throw ServerSyncException(msg.ifBlank { "Photo upload failed (${resp.code})" }, resp.code)
+                    }
+                }
+            } catch (e: IOException) {
+                throw ServerSyncException("Can't reach server: ${e.message ?: "network error"}")
+            }
+        }
+        imgSp.edit().putBoolean("up:$hash", true).apply()
+    }
+
+    /** Downloads photos referenced by incoming records. Returns sha256 -> local absolute path. */
+    private fun prefetchImages(base: String, token: String, records: JSONArray): Map<String, String> {
+        val out = HashMap<String, String>()
+        val dir = com.example.util.ReceiptStorageHelper.getReceiptsDir(appContext)
+        for (i in 0 until records.length()) {
+            val r = records.getJSONObject(i)
+            val hashCol = IMAGE_COLUMNS[r.optString("tbl")]?.second ?: continue
+            val data = r.optJSONObject("data") ?: continue
+            val hash = data.optString(hashCol, "")
+            if (!SHA256_RE.matches(hash) || out.containsKey(hash)) continue
+            // Same photo already on this device (we uploaded it, or downloaded it before)?
+            val known = imgSp.getString("path:$hash", null)?.let { File(it) }
+            if (known != null && known.isFile) { out[hash] = known.absolutePath; continue }
+            val target = File(dir, "SYNC_$hash.jpg")
+            if (!target.isFile) {
+                val tmp = File(dir, "SYNC_$hash.part")
+                try {
+                    http.newCall(Request.Builder().url("$base/api/files/$hash").header("Authorization", "Bearer $token").build()).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use
+                        resp.body?.byteStream()?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                    }
+                    if (tmp.isFile && sha256Hex(tmp) == hash) tmp.renameTo(target) else tmp.delete()
+                } catch (e: Exception) {
+                    tmp.delete()
+                }
+            }
+            if (target.isFile) {
+                out[hash] = target.absolutePath
+                imgSp.edit().putString("path:$hash", target.absolutePath).putBoolean("up:$hash", true).apply()
+            }
+        }
+        return out
+    }
+
+    private fun sha256Hex(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     // ------------------------------------------------------------------

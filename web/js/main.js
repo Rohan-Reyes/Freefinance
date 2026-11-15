@@ -1,9 +1,11 @@
 import { store, api } from './store.js';
 import { PAGES, NAV } from './pages.js';
-import { esc, toast, viewPrefs, fmtDateTime } from './ui.js';
+import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js';
+import { lock, showLockScreen } from './security.js';
+import { hydratePhotos, viewPhoto } from './images.js';
 
 const app = document.getElementById('app');
-document.documentElement.dataset.theme = viewPrefs.get('theme', 'system');
+applyTheme();
 
 // ---------------------------------------------------------------- auth screens
 async function authScreen() {
@@ -61,6 +63,7 @@ function shell() {
     <aside class="side">
       <div class="brand"><span class="logo">₱</span><div><strong>My Finance</strong><small id="who"></small></div></div>
       <nav id="nav">${NAV.map(([k, ico, label]) => `<a href="#/${k}" data-nav="${k}"><span class="ni">${ico}</span>${label}</a>`).join('')}</nav>
+      <button class="btn ghost small lock-btn" id="lockBtn" data-action-global="lock" hidden>🔒 Lock now</button>
       <div class="sync-pill" id="syncPill" data-action-global="sync" title="Sync now"></div>
     </aside>
     <main id="main" tabindex="-1"></main>
@@ -73,10 +76,13 @@ function render() {
   if (!store.auth) return authScreen();
   const main = document.getElementById('main');
   if (!main) return;
+  const lb = document.getElementById('lockBtn'); if (lb) lb.hidden = !lock.enabled;
+  if (lock.locked) { main.innerHTML = ''; document.title = 'Locked · My Finance'; return; }
   const r = route(), page = PAGES[r.name];
   // Keep focus/caret inside the records search box while typing.
   const active = document.activeElement, filterKey = active?.dataset?.filter, caret = active?.selectionStart;
   main.innerHTML = page.render(r.params);
+  hydratePhotos(main);
   document.title = `${page.title} · My Finance`;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r.navKey));
   if (filterKey) { const el = main.querySelector(`[data-filter="${filterKey}"]`); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch { /* not a text input */ } } }
@@ -93,10 +99,13 @@ function renderSyncPill() {
 
 // ---------------------------------------------------------------- events (delegated; CSP forbids inline handlers)
 document.addEventListener('click', async (e) => {
+  const ph = e.target.closest('[data-photo]');
+  if (ph) { e.preventDefault(); e.stopPropagation(); viewPhoto(ph.dataset.photo, ph.dataset.title || 'Photo'); return; }
   const g = e.target.closest('[data-action-global]');
   if (g) {
     if (g.dataset.actionGlobal === 'sync') store.sync().then(() => toast('Synced')).catch((x) => toast(x.message, 'err'));
     if (g.dataset.actionGlobal === 'add') (await import('./pages.js')).openTxForm(null);
+    if (g.dataset.actionGlobal === 'lock') lock.lockNow();
     return;
   }
   const el = e.target.closest('#main [data-action]');
@@ -112,6 +121,12 @@ document.addEventListener('change', (e) => {
   if (el.dataset?.filter && el.tagName === 'SELECT') { PAGES[r.name].onFilter?.(el.dataset.filter, el.value); render(); }
   if (el.dataset?.filter === 'month') { PAGES[r.name].onFilter?.('month', el.value); render(); }
 });
+// Drag & drop reordering on the Customize page
+let dragId = null;
+document.addEventListener('dragstart', (e) => { const r = e.target.closest?.('.cust-row'); if (!r) return; dragId = r.dataset.id; r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+document.addEventListener('dragover', (e) => { const r = e.target.closest?.('.cust-row'); if (!r || !dragId) return; e.preventDefault(); document.querySelectorAll('.cust-row.over').forEach((x) => x.classList.remove('over')); r.classList.add('over'); });
+document.addEventListener('drop', (e) => { const r = e.target.closest?.('.cust-row'); if (!r || !dragId) return; e.preventDefault(); if (r.dataset.id !== dragId) PAGES.customize.drop(dragId, r.dataset.id); dragId = null; });
+document.addEventListener('dragend', () => { dragId = null; document.querySelectorAll('.cust-row').forEach((x) => x.classList.remove('dragging', 'over')); });
 let filterTimer;
 document.addEventListener('input', (e) => {
   const el = e.target;
@@ -126,13 +141,25 @@ document.addEventListener('keydown', (e) => {
 
 // ---------------------------------------------------------------- boot
 let syncTimer = null;
+let lockShown = false;
+async function enforceLock() {
+  if (!lock.locked || lockShown) return;
+  lockShown = true;
+  document.querySelectorAll('.modal-wrap').forEach((m) => m.remove()); // don't leave forms/card details open
+  render();
+  await showLockScreen(() => store.signOut());
+  lockShown = false;
+  render();
+}
 async function start() {
   shell();
+  lock.init(enforceLock);
   await store.load();
   let queued = false;
   store.subscribe(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; render(); }); });
   window.addEventListener('hashchange', () => { render(); document.getElementById('main')?.scrollTo?.(0, 0); window.scrollTo(0, 0); });
   render();
+  enforceLock();
   const doSync = () => store.sync().catch((e) => { if (e.status === 401) { toast('Session ended — please sign in again', 'err'); setTimeout(() => location.reload(), 1200); } });
   doSync();
   clearInterval(syncTimer);

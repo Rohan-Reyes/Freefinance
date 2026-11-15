@@ -1,9 +1,12 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
 import { store } from './store.js';
 import * as L from './logic.js';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js';
+import { uploadPhoto, hydratePhotos, isSha } from './images.js';
+import { BANKS, bankFor } from './banks.js';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
-  lineChart, barPairs, donut, progressBar, viewPrefs,
+  lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme,
 } from './ui.js';
 
 // ---------------------------------------------------------------- shared helpers
@@ -47,13 +50,14 @@ function txRow(t, perspectiveAccountId) {
       <small>${where} · ${t.category_id ? catLabel(t.category_id) : esc(t.type)} · ${fmtDateTime(t.date)}</small>
       ${labels.length ? `<div class="chips">${labels.map((l) => `<span class="chip">${esc(l)}</span>`).join('')}</div>` : ''}</div>
     <div class="tx-amt ${amountClass(t)}">${txAmount(t, perspectiveAccountId)}
+      ${isSha(t.proof_sha256) ? `<button class="badge photo-badge" data-photo="${t.proof_sha256}" data-title="${esc(t.note || 'Proof')}">📎 Photo</button>` : t.proof_image_uri ? '<small class="badge" title="Stored on the phone only">📎 On phone</small>' : ''}
       ${t.status === 'Planned' ? '<small class="badge warn">Planned</small>' : ''}
       ${t.recurrence_rule && t.recurrence_rule !== 'None' ? `<small class="badge">${esc(t.recurrence_rule)}</small>` : ''}</div>
   </div>`;
 }
 
 // ---------------------------------------------------------------- transaction form
-function txFields(type) {
+function txFields(type, rule) {
   return [
     { key: 'type', label: 'Type', type: 'select', options: [['Expense', 'Expense'], ['Income', 'Income'], ['Transfer', 'Transfer']], half: true },
     { key: 'amount', label: 'Amount', type: 'money', required: true, half: true },
@@ -62,7 +66,7 @@ function txFields(type) {
     { key: 'category_id', label: 'Category', type: 'select', options: categoryOptions(type === 'Income' ? 'Income' : 'Expense'), numeric: true },
     { key: 'date', label: 'Date & time', type: 'datetime', required: true, half: true },
     { key: 'status', label: 'Status', type: 'select', options: [['Cleared', 'Cleared'], ['Planned', 'Planned']], half: true },
-    { key: 'recurrence_rule', label: 'Repeats', type: 'select', options: L.RECURRENCE.map((r) => [r, r === 'Monthly:Last' ? 'Monthly (last day)' : r]), half: true },
+    { key: 'recurrence_rule', label: 'Repeats', type: 'select', options: [...L.RECURRENCE, ...(rule && !L.RECURRENCE.includes(rule) ? [rule] : [])].map((r) => [r, r === 'Monthly:Last' ? 'Monthly (last day)' : r]), half: true },
     { key: 'labels', label: 'Labels', hint: 'Comma separated, e.g. Project X, Reimbursable', half: true },
     { key: 'note', label: 'Note / description', type: 'textarea' },
   ];
@@ -71,6 +75,8 @@ export async function openTxForm(existing, preset = {}) {
   if (!store.all('accounts').length) { toast('Add an account first', 'warn'); location.hash = '#/accounts'; return; }
   const t = existing || { type: 'Expense', date: Date.now(), status: 'Cleared', recurrence_rule: 'None', account_id: store.all('accounts')[0].id, ...preset };
   const values = { ...t, labels: L.labelsOf(t).join(', ') };
+  let proof = isSha(t.proof_sha256) ? t.proof_sha256 : null, proofChanged = false;
+  const paintProof = (w) => { const box = w.querySelector('.proof-box'); box.innerHTML = proof ? `<img data-sha="${proof}" alt="Proof photo"><button type="button" class="btn small ghost danger" data-proof-remove>Remove photo</button>` : (t.proof_image_uri && !proofChanged ? '<small class="muted">📎 A photo is attached on the phone (not uploaded yet).</small>' : '<small class="muted">No photo attached.</small>'); hydratePhotos(box); };
   const toggle = (wrap) => {
     const type = wrap.querySelector('[name=type]').value;
     wrap.querySelector('[name=to_account_id]').closest('.field').style.display = type === 'Transfer' ? '' : 'none';
@@ -78,12 +84,26 @@ export async function openTxForm(existing, preset = {}) {
     const sel = wrap.querySelector('[name=category_id]'), keep = sel.value;
     sel.innerHTML = categoryOptions(type === 'Income' ? 'Income' : 'Expense').map(([v, l]) => `<option value="${esc(v)}" ${String(v) === keep ? 'selected' : ''}>${esc(l)}</option>`).join('');
   };
-  await formModal(existing ? 'Edit transaction' : 'New transaction', txFields(t.type), values, {
+  await formModal(existing ? 'Edit transaction' : 'New transaction', txFields(t.type, t.recurrence_rule), values, {
     wide: true,
-    onOpen: (w) => { toggle(w); w.querySelector('[name=type]').addEventListener('change', () => toggle(w)); },
+    onOpen: (w) => {
+      toggle(w); w.querySelector('[name=type]').addEventListener('change', () => toggle(w));
+      w.querySelector('.form').insertAdjacentHTML('beforeend', `<div class="field"><span>Proof photo / receipt</span><div class="proof-box"></div>
+        <label class="btn small">📷 Attach photo<input type="file" accept="image/*" capture="environment" hidden data-proof-file></label></div>`);
+      paintProof(w);
+      w.querySelector('[data-proof-file]').addEventListener('change', async (e) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        const box = w.querySelector('.proof-box'); box.innerHTML = '<small class="muted">Uploading…</small>';
+        try { proof = await uploadPhoto(f); proofChanged = true; } catch (x) { toast(x.message, 'err'); }
+        paintProof(w);
+      });
+      w.querySelector('.proof-box').addEventListener('click', (e) => { if (e.target.closest('[data-proof-remove]')) { proof = null; proofChanged = true; paintProof(w); } });
+    },
     extraActions: existing ? [{ label: 'Delete', kind: 'danger ghost', onClick: async () => {
-      if (!(await confirmDialog('Delete transaction?', 'This cannot be undone.'))) return false;
-      store.remove('transactions', existing.id); toast('Transaction deleted');
+      if (!(await confirmDialog('Delete transaction?', 'You can undo this right after.'))) return false;
+      const snapshot = { ...existing };
+      store.remove('transactions', existing.id);
+      undo.set(`Deleted: ${existing.note || existing.type}`, () => store.put('transactions', snapshot));
     } }] : [],
     onSubmit: (v) => {
       if (v.type === 'Transfer') {
@@ -92,72 +112,138 @@ export async function openTxForm(existing, preset = {}) {
         v.category_id = null;
       } else v.to_account_id = null;
       v.labels = JSON.stringify((v.labels || '').split(',').map((s) => s.trim()).filter(Boolean));
-      if (existing) store.update('transactions', existing.id, v); else L.addTransaction(v);
-      toast(existing ? 'Transaction updated' : 'Transaction added');
+      if (proofChanged) { v.proof_sha256 = proof; if (!proof) v.proof_image_uri = null; }
+      if (existing) {
+        const snapshot = { ...existing };
+        store.update('transactions', existing.id, v);
+        undo.set('Transaction updated', () => store.put('transactions', snapshot));
+      } else {
+        const row = L.addTransaction(v);
+        const cur = store.get('accounts', row.account_id)?.currency_code || L.base();
+        celebrate(row.note || catOf(row.category_id)?.name || row.type, money(row.type === 'Income' ? row.amount : -row.amount, cur, { sign: true, hideable: false }), row.type === 'Income' ? 'pos' : row.type === 'Expense' ? 'neg' : 'xfer');
+        undo.set(`Added: ${row.note || row.type}`, () => store.remove('transactions', row.id));
+      }
     },
   });
 }
 
-// ---------------------------------------------------------------- DASHBOARD
+// ---------------------------------------------------------------- DASHBOARD (modular cards, DashboardCardType)
+const monthStart = () => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return +d; };
+const DASH_CARDS = [
+  ['TOTAL_BALANCE', 'Total Balance', 'Total liquid balance and active account count overview', () => {
+    const accs = store.all('accounts').filter((a) => a.parent_account_id == null).sort((a, b) => L.convert(L.balanceOf(b), b.currency_code, L.base()) - L.convert(L.balanceOf(a), a.currency_code, L.base()));
+    return `<h3>Accounts & sub-accounts <a href="#/accounts" class="more">All</a></h3><p class="muted">${store.all('accounts').length} account(s) · ${store.all('accounts').filter((a) => a.include_in_tally).length} in total</p>
+      ${accs.slice(0, 6).map((a) => `<a class="mini-row link" href="#/accounts/${a.id}"><span><span class="dot" style="background:${argbToCss(a.color)}"></span> ${esc(a.name)}</span><strong class="${L.balanceOf(a) < 0 ? 'neg' : ''}">${money(L.balanceOf(a), a.currency_code)}</strong></a>`).join('') || empty('No accounts configured')}`; }],
+  ['MONEY_FLOW', 'Money Flow', 'Income vs expense breakdown and net cash flow gauge', () => {
+    const all = L.moneyFlow(), m = L.moneyFlow(monthStart()), tot = all.income + all.expense;
+    return `<h3>Money flow breakdown</h3><div class="split two"><i style="width:${tot ? (all.income / tot) * 100 : 50}%"></i></div>
+      <div class="kpis">${kpi('Income', money(all.income), 'pos')}${kpi('Expenses', money(all.expense), 'neg')}${kpi('Net cash balance', money(all.net, L.base(), { sign: true }), all.net >= 0 ? 'pos' : 'neg')}</div>
+      <small class="muted">All time · this month: ${money(m.income)} in, ${money(m.expense)} out</small>`; }],
+  ['BUDGET_PROGRESS', 'Budget Consumption', 'Progress against active monthly budgets', () => {
+    const b = L.budgetProgress().slice(0, 4);
+    return `<h3>Monthly budget health <a href="#/budgets" class="more">All</a></h3>${b.length ? b.map((x) => `<div class="budget-line"><div><strong>${L.icon(x.category.icon_res_id)} ${esc(x.category.name)}</strong>
+      <small>${money(x.spent)} of ${money(x.budget.amount_limit)}</small></div>${progressBar(x.ratio)}</div>`).join('') : empty('No budgets yet')}`; }],
+  ['DEBT_SUMMARY', 'Receivables & Debts', 'Top receivables summary of who owes you money', () => {
+    const act = store.all('debts').filter((d) => d.status === 'Active'), lent = act.filter((d) => d.type === 'Lent'), bor = act.filter((d) => d.type === 'Borrowed');
+    return `<h3>Receivables (owed to me) <a href="#/debts" class="more">All</a></h3>
+      <div class="kpis">${kpi('Owed to you', money(lent.reduce((s, d) => s + d.remaining_amount, 0)), 'pos')}${kpi('You owe', money(bor.reduce((s, d) => s + d.remaining_amount, 0)), 'neg')}</div>
+      ${lent.sort((a, b) => b.remaining_amount - a.remaining_amount).slice(0, 3).map((d) => `<div class="mini-row"><span>${esc(d.person_name)}${d.due_date ? `<br><small class="muted">due ${fmtDate(d.due_date)}</small>` : ''}</span><strong>${money(d.remaining_amount)}</strong></div>`).join('') || empty('No outstanding money owed to you.')}`; }],
+  ['LIQUID_VS_LOCKED', 'Liquid vs Locked', 'Spendable liquid funds vs locked savings and time-deposits', () => {
+    const ll = L.liquidVsLocked();
+    return `<h3>Liquid vs locked funds</h3><div class="split"><i style="width:${ll.ratio * 100}%"></i></div>
+      <div class="kpis">${kpi('Spendable liquid', money(ll.spendable))}${kpi('Locked / vaults', money(ll.locked))}</div><small class="muted">${Math.round(ll.ratio * 100)}% of your money is spendable</small>`; }],
+  ['FORECAST_30', '30-Day Forecast', 'Projected balance over the next 30 days (planned, recurring, milestones, interest)', () => {
+    const fc = L.forecast(30, viewPrefs.get('includeAssets', false));
+    return `<h3>30-day cash-flow forecast</h3>${lineChart(fc.map((d) => ({ y: d.balance, label: fmtDate(d.date, { month: 'short', day: 'numeric' }) })), { fmt: (v) => money(v) })}
+      <div class="kpis">${kpi('Today', money(fc[0]?.balance ?? 0))}${kpi('In 30 days', money(fc[fc.length - 1]?.balance ?? 0))}</div>`; }, true],
+  ['PROJECT_TRACKER', 'Project / Label Tracker', 'Net balance and performance for tagged initiatives', () => {
+    const map = new Map();
+    for (const t of store.all('transactions')) for (const l of L.labelsOf(t)) { const e = map.get(l) || { net: 0, n: 0, inc: 0, exp: 0 }; if (t.type === 'Income') { e.net += t.amount; e.inc += t.amount; } else if (t.type === 'Expense') { e.net -= t.amount; e.exp += t.amount; } e.n++; map.set(l, e); }
+    const rows = [...map.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+    return `<h3>Tagged initiative performance</h3>${rows.length ? rows.map(([l, e]) => `<div class="mini-row"><span><span class="chip">#${esc(l)}</span> <small class="muted">${e.n} entr${e.n === 1 ? 'y' : 'ies'}</small></span><strong class="${e.net >= 0 ? 'pos' : 'neg'}">${money(e.net, L.base(), { sign: true })}</strong></div>`).join('') : empty('Add labels to transactions to track projects')}`; }],
+  ['LONG_TERM_EXPECTED', 'Long-Term Expected', 'Delayed receivables, planned inflows and pending milestones', () => {
+    const list = [
+      ...store.all('debts').filter((d) => d.type === 'Lent' && d.status === 'Active').map((d) => ({ title: `Receivable from ${d.person_name}`, amount: d.remaining_amount, date: d.due_date || Date.now(), src: d.person_name })),
+      ...store.all('milestones').filter((m) => m.status === 'Pending').map((m) => ({ title: `Milestone: ${m.title}`, amount: m.amount, date: m.expected_date, src: 'Milestone' })),
+      ...store.all('transactions').filter((t) => t.type === 'Income' && (t.status === 'Planned' || (t.recurrence_rule && t.recurrence_rule !== 'None'))).map((t) => ({ title: t.note || 'Expected Inflow', amount: t.amount, date: t.recurrence_rule !== 'None' ? L.nextDueDate(t.date, t.recurrence_rule) : t.date, src: 'Scheduled' })),
+    ].sort((a, b) => a.date - b.date);
+    return `<h3>Long-term expected inflows</h3>${list.length ? `<p class="muted">Total ${money(list.reduce((s, x) => s + x.amount, 0))}</p>` + list.slice(0, 5).map((x) => `<div class="mini-row"><span>${esc(x.title)}<br><small class="muted">${esc(x.src)} · ${fmtDate(x.date)}</small></span><strong class="pos">${money(x.amount)}</strong></div>`).join('') : empty('No scheduled delayed inflows or long-term receivables.')}`; }],
+  ['WEEKLY_FORECAST', '7-Day Weekly Sparkline', 'Short-term projected balance for the coming week', () => {
+    const fc = L.forecast(7, viewPrefs.get('includeAssets', false)), d = (fc[6]?.balance ?? 0) - (fc[0]?.balance ?? 0);
+    return `<h3>7-day outlook</h3>${lineChart(fc.map((x) => ({ y: x.balance, label: fmtDate(x.date, { weekday: 'short' }) })), { height: 90, fmt: (v) => money(v) })}
+      <div class="kpis">${kpi('In 7 days', money(fc[6]?.balance ?? 0))}${kpi('Change', money(d, L.base(), { sign: true }), d >= 0 ? 'pos' : 'neg')}</div>`; }],
+  ['UPCOMING_BILLS', 'Upcoming Bills & Subs', 'Next scheduled recurring bills and subscriptions', () => {
+    const bills = L.recurringTemplates().filter((t) => t.type === 'Expense').map((t) => ({ t, next: L.nextDueDate(t.date, t.recurrence_rule) })).sort((a, b) => a.next - b.next);
+    return `<h3>Upcoming bills & subs <a href="#/subscriptions" class="more">All</a></h3>${bills.length ? `<p class="muted">Upcoming scheduled: ${money(bills.reduce((s, x) => s + L.monthlyEquivalent(x.t.amount, x.t.recurrence_rule), 0))}/mo</p>` + bills.slice(0, 5).map(({ t, next }) => `<div class="mini-row"><span>${esc(t.note || 'Bill')}<br><small class="muted">${fmtDate(next)} · ${esc(L.scheduleLabel(t.recurrence_rule, t.date))}</small></span><strong class="neg">${money(-t.amount, L.base(), { sign: true })}</strong></div>`).join('') : empty('No recurring bills or subscriptions scheduled.')}`; }],
+  ['SPENDING_CATEGORIES', 'Top Spending Categories', 'Where your money went this month', () => {
+    const cats = L.spendingByCategory(monthStart(), Date.now()).slice(0, 5), max = cats[0]?.total || 1;
+    return `<h3>Top spending categories</h3>${cats.length ? cats.map((c) => `<div class="budget-line"><div><strong>${L.icon(c.category?.icon_res_id)} ${esc(c.category?.name || 'Uncategorized')}</strong><small>${money(c.total)}</small></div>${progressBar(c.total / max, 2, { neutral: true })}</div>`).join('') : empty('No category expense records recorded yet.')}`; }],
+  ['SAVINGS_RATE', 'Savings Rate Gauge', "This month's share of income kept", () => {
+    const f = L.moneyFlow(monthStart()), r = f.income > 0 ? Math.max(0, (f.net / f.income) * 100) : 0;
+    return `<h3>Current savings rate</h3><div class="gauge-row"><div class="score-ring small ${r >= 20 ? '' : r >= 10 ? 'warn' : 'neg'}" style="--p:${Math.min(100, r)}"><span>${Math.round(r)}%</span></div>
+      <div><p>${money(f.net, L.base(), { sign: true })} saved of ${money(f.income)} income</p><small class="muted">Target: 20% or more</small></div></div>`; }],
+  ['SPENDING_TRENDS', 'Monthly Spending Trends', 'Six months of income vs expenses', () => `<h3>Monthly spending trends</h3>${barPairs(L.monthlyTrends(6), { fmt: (v) => money(v) })}`, true],
+  ['PLANNED_PAYOUTS', 'Planned Payouts', 'Scheduled one-off commitments', () => {
+    const p = store.all('planned_payouts').filter((x) => x.status === 'PENDING').sort((a, b) => a.due_date - b.due_date);
+    return `<h3>Planned payouts <a href="#/subscriptions" class="more">All</a></h3>${p.length ? p.slice(0, 5).map((x) => `<div class="mini-row"><span>${x.priority === 'HIGH' ? '🔴' : x.priority === 'LOW' ? '⚪' : '🟡'} ${esc(x.title)}<br><small class="muted">due ${fmtDate(x.due_date)}${x.due_date < Date.now() ? ' · <b class="neg">overdue</b>' : ''}</small></span><strong>${money(x.amount, x.currency_code)}</strong></div>`).join('') : empty("No pending planned payouts. You're all settled!")}`; }],
+  ['RECENT', 'Recent Transactions', 'Your latest ledger entries', () => {
+    const recent = store.all('transactions').sort((a, b) => b.date - a.date || b.id - a.id).slice(0, 8);
+    return `<h3>Recent transactions <a href="#/records" class="more">All</a></h3>${recent.length ? recent.map((t) => txRow(t)).join('') : empty('No Transactions Logged Yet', ` ${plus('Add one', 'quick', 'data-type="Expense"')}`)}`; }, true],
+];
+function dashLayout() {
+  const saved = viewPrefs.get('dashCards', null), ids = DASH_CARDS.map((c) => c[0]);
+  const order = [...(saved?.order || []).filter((id) => ids.includes(id)), ...ids.filter((id) => !(saved?.order || []).includes(id))];
+  return { order, hidden: new Set(saved?.hidden || []) };
+}
 const dashboard = {
   title: 'Dashboard',
   render() {
-    const inclAssets = viewPrefs.get('includeAssets', false);
-    const nw = L.netWorth(inclAssets);
-    const m0 = new Date(); m0.setDate(1); m0.setHours(0, 0, 0, 0);
-    const flow = L.moneyFlow(+m0);
-    const ll = L.liquidVsLocked();
-    const fc = L.forecast(30, inclAssets);
-    const budgets = L.budgetProgress().slice(0, 4);
-    const lent = store.all('debts').filter((d) => d.type === 'Lent' && d.status === 'Active');
-    const borrowed = store.all('debts').filter((d) => d.type === 'Borrowed' && d.status === 'Active');
-    const upcoming = [
-      ...L.recurringTemplates().map((t) => ({ when: L.nextDueDate(t.date, t.recurrence_rule), title: t.note || catOf(t.category_id)?.name || 'Recurring', amount: t.type === 'Income' ? t.amount : -t.amount, kind: 'Subscription' })),
-      ...store.all('planned_payouts').filter((p) => p.status === 'PENDING').map((p) => ({ when: p.due_date, title: p.title, amount: -p.amount, kind: 'Payout', cur: p.currency_code })),
-      ...store.all('milestones').filter((m) => m.status === 'Pending').map((m) => ({ when: m.expected_date, title: m.title, amount: m.amount, kind: 'Milestone' })),
-    ].sort((a, b) => a.when - b.when).slice(0, 6);
-    const recent = store.all('transactions').sort((a, b) => b.date - a.date || b.id - a.id).slice(0, 8);
-    const b = L.base();
+    const inclAssets = viewPrefs.get('includeAssets', false), nw = L.netWorth(inclAssets), b = L.base();
+    const { order, hidden } = dashLayout(), byId = Object.fromEntries(DASH_CARDS.map((c) => [c[0], c]));
     return `
     <section class="hero">
-      <div><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'cash balance'} · ${esc(b)}</span>
+      <div><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'balance'} · ${esc(b)}</span>
         <h1 class="hero-num">${money(nw.total)}</h1>
         <div class="hero-sub"><span>Cash ${money(nw.cash)}</span><span>Assets ${money(nw.assets)}</span>${nw.excluded ? `<span>${nw.excluded} account(s) excluded</span>` : ''}</div></div>
       <div class="hero-actions">
         <button class="btn" data-action="quick" data-type="Expense">− Expense</button>
         <button class="btn" data-action="quick" data-type="Income">＋ Income</button>
         <button class="btn" data-action="quick" data-type="Transfer">⇄ Transfer</button>
+        ${undo.action ? '<button class="btn" data-action="undo">↶ Undo</button>' : ''}
         <label class="switch"><input type="checkbox" data-action="toggleAssets" ${inclAssets ? 'checked' : ''}> Include assets</label>
+        <a class="btn" href="#/customize" title="Customize dashboard">⚙ Customize</a>
       </div>
     </section>
-    <div class="grid">
-      <div class="card"><h3>This month</h3><div class="kpis">
-        ${kpi('Income', money(flow.income), 'pos')}${kpi('Expenses', money(flow.expense), 'neg')}${kpi('Net', money(flow.net, b, { sign: true }), flow.net >= 0 ? 'pos' : 'neg')}</div></div>
-      <div class="card"><h3>Liquid vs locked</h3>
-        <div class="split"><i style="width:${ll.ratio * 100}%"></i></div>
-        <div class="kpis">${kpi('Spendable', money(ll.spendable))}${kpi('Locked / invested', money(ll.locked))}</div></div>
-      <div class="card span2"><h3>30-day cash-flow forecast</h3>
-        ${lineChart(fc.map((d) => ({ y: d.balance, label: fmtDate(d.date, { month: 'short', day: 'numeric' }) })), { fmt: (v) => money(v) })}
-        <div class="kpis">${kpi('Today', money(fc[0]?.balance ?? 0))}${kpi('In 30 days', money(fc[fc.length - 1]?.balance ?? 0))}</div></div>
-      <div class="card"><h3>Budgets <a href="#/budgets" class="more">All</a></h3>
-        ${budgets.length ? budgets.map((x) => `<div class="budget-line"><div><strong>${L.icon(x.category.icon_res_id)} ${esc(x.category.name)}</strong>
-          <small>${money(x.spent)} of ${money(x.budget.amount_limit)}</small></div>${progressBar(x.ratio)}</div>`).join('') : empty('No budgets yet')}</div>
-      <div class="card"><h3>Debts <a href="#/debts" class="more">All</a></h3>
-        <div class="kpis">${kpi('Owed to you', money(lent.reduce((s, d) => s + d.remaining_amount, 0)), 'pos')}${kpi('You owe', money(borrowed.reduce((s, d) => s + d.remaining_amount, 0)), 'neg')}</div>
-        ${lent.sort((a, b) => b.remaining_amount - a.remaining_amount).slice(0, 3).map((d) => `<div class="mini-row"><span>${esc(d.person_name)}</span><strong>${money(d.remaining_amount)}</strong></div>`).join('')}</div>
-      <div class="card"><h3>Upcoming</h3>
-        ${upcoming.length ? upcoming.map((u) => `<div class="mini-row"><span><small class="badge">${esc(u.kind)}</small> ${esc(u.title)}<br><small class="muted">${fmtDate(u.when)}</small></span>
-          <strong class="${u.amount >= 0 ? 'pos' : 'neg'}">${money(u.amount, u.cur || b, { sign: true })}</strong></div>`).join('') : empty('Nothing scheduled')}</div>
-      <div class="card span2"><h3>Monthly trend</h3>${barPairs(L.monthlyTrends(6), { fmt: (v) => money(v) })}</div>
-      <div class="card span2"><h3>Recent transactions <a href="#/records" class="more">All</a></h3>
-        ${recent.length ? recent.map((t) => txRow(t)).join('') : empty('No transactions yet', ` ${plus('Add one', 'quick', 'data-type="Expense"')}`)}</div>
-    </div>`;
+    <div class="grid">${order.filter((id) => !hidden.has(id)).map((id) => `<div class="card ${byId[id][4] ? 'span2' : ''}" data-card="${id}">${byId[id][3]()}</div>`).join('') || empty('All cards are hidden — use Customize to show some.')}</div>`;
   },
   actions: {
     quick: (el) => openTxForm(null, { type: el.dataset.type }),
     toggleAssets: (el) => { viewPrefs.set('includeAssets', el.checked); store.emit(); },
     editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
+    undo: () => { undo.perform(); store.emit(); },
   },
+};
+
+// ---------------------------------------------------------------- CUSTOMIZE DASHBOARD (EditDashboardScreen)
+const customize = {
+  title: 'Customize dashboard',
+  render() {
+    const { order, hidden } = dashLayout(), byId = Object.fromEntries(DASH_CARDS.map((c) => [c[0], c]));
+    return `<div class="page-head"><div><a href="#/dashboard" class="muted">← Dashboard</a><h1>Reorder & toggle cards</h1><p class="muted">Drag anywhere to reorder, or use the arrows. Saved in this browser.</p></div>
+      <button class="btn" data-action="reset">Reset to default</button></div>
+      <div class="list" id="custList">${order.map((id, i) => `<div class="cust-row" draggable="true" data-id="${id}"><span class="grip">⠿</span>
+        <div><strong>${esc(byId[id][1])}</strong><small>${esc(byId[id][2])}</small></div>
+        <button class="icon-btn" data-action="move" data-id="${id}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+        <button class="icon-btn" data-action="move" data-id="${id}" data-d="1" ${i === order.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+        <label class="check" style="width:auto;margin:0"><input type="checkbox" data-action="toggle" data-id="${id}" ${hidden.has(id) ? '' : 'checked'}> Show</label></div>`).join('')}</div>`;
+  },
+  save(order, hidden) { viewPrefs.set('dashCards', { order, hidden: [...hidden] }); store.emit(); },
+  actions: {
+    move: (el) => { const { order, hidden } = dashLayout(), i = order.indexOf(el.dataset.id), j = i + Number(el.dataset.d); if (j < 0 || j >= order.length) return; [order[i], order[j]] = [order[j], order[i]]; customize.save(order, hidden); },
+    toggle: (el) => { const { order, hidden } = dashLayout(); if (el.checked) hidden.delete(el.dataset.id); else hidden.add(el.dataset.id); customize.save(order, hidden); },
+    reset: () => { viewPrefs.set('dashCards', null); store.emit(); toast('Dashboard reset'); },
+  },
+  drop(fromId, toId) { const { order, hidden } = dashLayout(); const i = order.indexOf(fromId); order.splice(i, 1); order.splice(order.indexOf(toId) + (i <= order.indexOf(toId) ? 1 : 0), 0, fromId); customize.save(order, hidden); },
 };
 
 // ---------------------------------------------------------------- ACCOUNTS
@@ -171,6 +257,7 @@ const accountFields = (isSub) => [
   { key: 'color', label: 'Color', type: 'color', half: true },
   { key: 'interest_rate_pa', label: 'Interest rate % p.a.', type: 'number', half: true },
   { key: 'compounding_frequency', label: 'Compounding', type: 'select', options: L.COMPOUNDING.map((c) => [c, c[0] + c.slice(1).toLowerCase()]), half: true },
+  { key: 'linked_app_package', label: 'Linked banking app', type: 'select', options: [['', '— None —'], ...BANKS.map((b) => [b[0], b[1]])], half: true, hint: 'The phone opens this app; the web opens its website.' },
   { key: 'locked_until', label: 'Locked until (optional)', type: 'date', half: true },
   { key: 'is_locked', label: 'Locked (not spendable)', type: 'checkbox', half: true },
   { key: 'include_in_tally', label: 'Include in total balance', type: 'checkbox', half: true },
@@ -195,8 +282,10 @@ const accounts = {
   render() {
     const tree = accountsTree();
     const nw = L.netWorth(false);
+    const negatives = store.all('accounts').filter((a) => L.balanceOf(a) < 0);
     return `<div class="page-head"><div><h1>Accounts</h1><p class="muted">Total in tally: <strong>${money(nw.cash)}</strong></p></div>
       <div class="row">${plus('Account', 'addAccount')}<button class="btn" data-action="addSub">＋ Sub-account</button></div></div>
+      ${negatives.length ? `<div class="banner warn">⚠ Negative balance detected in ${negatives.map((a) => `<strong>${esc(a.name)}</strong>`).join(', ')}. ${negatives.map((a) => `<button class="btn small" data-action="adjust" data-id="${a.id}">Fix ${esc(a.name)} ➔</button>`).join(' ')}</div>` : ''}
       ${tree.length ? `<div class="list">${tree.map(({ a, depth }) => {
         const bal = L.balanceOf(a);
         const conv = a.currency_code !== L.base() ? `<small class="muted">≈ ${money(L.convert(bal, a.currency_code, L.base()))}</small>` : '';
@@ -207,6 +296,7 @@ const accounts = {
             <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${locked ? ' · 🔒 Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
           <div class="acc-bal"><strong class="${bal < 0 ? 'neg' : ''}">${money(bal, a.currency_code)}</strong>${conv}</div>
           <div class="row-actions">
+            ${bankFor(a.linked_app_package) ? `<a class="icon-btn launch" title="Open ${esc(bankFor(a.linked_app_package)[1])} website" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">↗</a>` : ''}
             <button class="icon-btn" title="Adjust balance" data-action="adjust" data-id="${a.id}">⚖</button>
             <button class="icon-btn" title="Edit" data-action="editAccount" data-id="${a.id}">✎</button>
             <button class="icon-btn" title="Delete" data-action="deleteAccount" data-id="${a.id}">🗑</button></div>
@@ -239,14 +329,17 @@ const accountDetail = {
     return `<div class="page-head"><div><a href="#/accounts" class="muted">← Accounts</a><h1><span class="dot big" style="background:${argbToCss(a.color)}"></span>${esc(a.name)}</h1>
       <p class="muted">${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}</p></div>
       <div class="row"><button class="btn" data-action="add" data-type="Income">＋ Income</button><button class="btn" data-action="add" data-type="Expense">− Expense</button>
-      <button class="btn" data-action="add" data-type="Transfer">⇄ Transfer</button><button class="btn" data-action="edit">Edit</button></div></div>
-      <div class="kpis big">${kpi('Balance', money(L.balanceOf(a), a.currency_code))}${kpi('Starting balance', money(a.initial_balance, a.currency_code))}${kpi('Transactions', String(txs.length))}</div>
+      <button class="btn" data-action="add" data-type="Transfer">⇄ Transfer</button><button class="btn" data-action="edit">Edit</button>${bankFor(a.linked_app_package) ? `<a class="btn primary" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">Launch ${esc(bankFor(a.linked_app_package)[1])} ↗</a>` : ''}</div></div>
+      ${L.balanceOf(a) < 0 ? `<div class="banner warn">⚠ Negative balance detected. Tap to calibrate the real balance. <button class="btn small" data-action="calibrate">Fix balance ➔</button></div>` : ''}
+      <div class="kpis big">${kpi('Current balance', `<button class="linkish" data-action="calibrate" title="Tap to calibrate">${money(L.balanceOf(a), a.currency_code)}</button>`)}${kpi('Starting balance', money(a.initial_balance, a.currency_code))}${kpi('Transactions', String(txs.length))}</div>
+      ${(() => { const cm = L.cashMovement(a.id); return `<div class="card"><h3>Cash movement summary <small class="badge ${cm.net >= 0 ? 'pos' : 'neg'}">${cm.net >= 0 ? 'Net Positive' : 'Net Outflow'}</small></h3><div class="split two"><i style="width:${cm.inflow + cm.outflow ? (cm.inflow / (cm.inflow + cm.outflow)) * 100 : 50}%"></i></div><div class="kpis">${kpi('Total inflow', money(cm.inflow, a.currency_code), 'pos')}${kpi('Total outflow', money(cm.outflow, a.currency_code), 'neg')}${kpi('Net', money(cm.net, a.currency_code, { sign: true }), cm.net >= 0 ? 'pos' : 'neg')}</div></div>`; })()}
       ${subs.length ? `<h3>Sub-accounts</h3><div class="list">${subs.map((s) => `<a class="mini-row link" href="#/accounts/${s.id}"><span>${esc(s.name)} <small class="muted">${esc(s.sub_account_type || '')}</small></span><strong>${money(L.balanceOf(s), s.currency_code)}</strong></a>`).join('')}</div>` : ''}
       <h3>Ledger</h3><div class="list">${txs.length ? txs.map((t) => txRow(t, a.id)).join('') : empty('No transactions for this account')}</div>`;
   },
   actions: {
     add: (el, [id]) => openTxForm(null, { type: el.dataset.type, account_id: Number(id) }),
     edit: (el, [id]) => openAccountForm(store.get('accounts', id)),
+    calibrate: async (el, [id]) => { const a = store.get('accounts', id); await formModal(`Calibrate balance — ${a.name}`, [{ key: 'target', label: `Real balance right now (${a.currency_code})`, type: 'number', required: true, hint: 'Adjusts the starting balance so the ledger matches reality — no transaction is added.' }], { target: L.balanceOf(a).toFixed(2) }, { submitLabel: 'Calibrate', onSubmit: (v) => { const snap = { ...a }; L.adjustAccountBalance(a, v.target); undo.set('Balance calibrated', () => store.put('accounts', snap)); } }); },
     editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
   },
 };
@@ -348,6 +441,10 @@ const budgets = {
         ${progressBar(x.ratio)}<div class="kpis">${kpi('Spent', money(x.spent), x.ratio >= 1 ? 'neg' : '')}${kpi(x.remaining >= 0 ? 'Left' : 'Over by', money(Math.abs(x.remaining)), x.remaining >= 0 ? 'pos' : 'neg')}</div>
         <small class="muted">${esc(x.budget.period)} · ${fmtDate(x.budget.start_date)} – ${fmtDate(x.budget.end_date)} · ${Math.round(x.ratio * 100)}%</small></div>`).join('')}</div>`
         : empty('No budgets yet. Set a spending limit for a category.')}
+      ${(() => { const ex = L.categoryExpensesAllTime(), tot = ex.reduce((s2, x) => s2 + x.total, 0); if (!ex.length) return `<div class="card"><h3>Expense breakdown</h3>${empty('No Cleared Expenses Yet')}</div>`;
+        const items = ex.map((x, i) => ({ label: x.category.name, value: x.total, color: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'][i % 8] }));
+        return `<div class="card"><h3>Expense breakdown <small class="muted">${ex.length} categories tracked</small></h3><div class="donut-wrap">${donut(items)}<div class="legend-list"><div class="mini-row"><span><strong>Total spending</strong></span><strong>${money(tot)}</strong></div>
+          ${items.map((i, k) => `<div class="mini-row"><span><i class="sw" style="background:${i.color}"></i>${L.icon(ex[k].category.icon_res_id)} ${esc(i.label)}</span><strong>${money(i.value)} <small class="muted">${Math.round((i.value / tot) * 100)}%</small></strong></div>`).join('')}</div></div></div>`; })()}
       ${list.some((x) => x.budget.end_date < Date.now()) ? `<p class="muted center"><button class="btn" data-action="rollover">Roll expired budgets into the current period</button></p>` : ''}`;
   },
   actions: {
@@ -381,7 +478,7 @@ const debts = {
         return `<div class="card flat"><div class="mini-row"><span><strong>${esc(d.person_name)}</strong> <small class="badge ${d.type === 'Lent' ? 'pos' : 'neg'}">${esc(d.type)}</small>${overdue ? ' <small class="badge danger">Overdue</small>' : ''}<br>
           <small class="muted">${d.due_date ? 'Due ' + fmtDate(d.due_date) : 'No due date'}${d.notes ? ' · ' + esc(d.notes) : ''}</small></span>
           <strong>${money(d.remaining_amount)}<br><small class="muted">of ${money(d.total_amount)}</small></strong></div>
-          ${progressBar(d.total_amount ? paid / d.total_amount : 0, 2)}
+          ${progressBar(d.total_amount ? paid / d.total_amount : 0, 2, { good: true })}
           <div class="row">${d.status === 'Active' ? `<button class="btn small" data-action="pay" data-id="${d.id}">Record payment</button><button class="btn small" data-action="settle" data-id="${d.id}">Settle in full</button>` : ''}
           <button class="btn small ghost" data-action="edit" data-id="${d.id}">Edit</button><button class="btn small ghost danger" data-action="del" data-id="${d.id}">Delete</button></div></div>`;
       }).join('') : empty('Nothing here')}</div>`;
@@ -397,15 +494,44 @@ const debts = {
 };
 
 // ---------------------------------------------------------------- SUBSCRIPTIONS & PAYOUTS
+const CADENCES = [['Daily', 'Every day'], ['Weekdays', 'Weekdays (Mon–Fri)'], ['Weekends', 'Weekends (Sat–Sun)'], ['Weekly', 'Weekly (same weekday)'],
+  ['Biweekly', 'Every 2 weeks'], ['Custom', 'Specific days of the week'], ['Monthly', 'Monthly (same date)'], ['MonthlyDay', 'Monthly on a chosen day'],
+  ['Monthly:Last', 'Monthly on the last day'], ['Yearly', 'Yearly']];
 const subFields = () => [
   { key: 'note', label: 'Name (e.g. Netflix, Salary)', required: true },
-  { key: 'type', label: 'Type', type: 'select', options: [['Expense', 'Expense / bill'], ['Income', 'Income']], half: true },
+  { key: 'type', label: 'Type', type: 'select', options: [['Expense', 'Expense / bill'], ['Income', 'Income / receivable']], half: true },
   { key: 'amount', label: 'Amount', type: 'money', required: true, half: true },
-  { key: 'recurrence_rule', label: 'Repeats', type: 'select', options: L.RECURRENCE.filter((r) => r !== 'None').map((r) => [r, r === 'Monthly:Last' ? 'Monthly (last day)' : r]), half: true },
-  { key: 'date', label: 'First / anchor date', type: 'datetime', required: true, half: true },
+  { key: 'cadence', label: 'Recurrence cadence', type: 'select', options: CADENCES, half: true },
+  { key: 'days', label: 'Select active days', type: 'weekdays', half: true },
+  { key: 'dom', label: 'Day of the month (1–31)', type: 'number', half: true },
+  { key: 'date', label: 'Starts / next due', type: 'date', required: true, half: true },
+  { key: 'time', label: 'Time of day', type: 'time', half: true },
   { key: 'account_id', label: 'Account', type: 'select', numeric: true, options: accountOptions(), required: true, half: true },
   { key: 'category_id', label: 'Category', type: 'select', numeric: true, options: categoryOptions(null), half: true },
 ];
+// rule string <-> form values (RecurrenceHelper formats: Custom:MON,WED · Monthly:15 · Monthly:Last)
+function ruleToForm(t) {
+  const r = t.recurrence_rule || 'Monthly', d = new Date(t.date);
+  const base = { ...t, time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, days: [], dom: d.getDate() };
+  if (/^custom:/i.test(r)) return { ...base, cadence: 'Custom', days: r.slice(7).split(',').map((x) => x.trim()) };
+  if (/^monthly:last$/i.test(r)) return { ...base, cadence: 'Monthly:Last' };
+  if (/^monthly:\d+$/i.test(r)) return { ...base, cadence: 'MonthlyDay', dom: Number(r.split(':')[1]) };
+  return { ...base, cadence: CADENCES.some((c) => c[0] === r) ? r : 'Monthly' };
+}
+function formToRule(v) {
+  let rule = v.cadence;
+  if (rule === 'Custom') { if (!v.days.length) throw new Error('Pick at least one day'); rule = `Custom:${v.days.join(',')}`; }
+  if (rule === 'MonthlyDay') { const n = Math.round(v.dom || 0); if (n < 1 || n > 31) throw new Error('Day of the month must be 1–31'); rule = `Monthly:${n}`; }
+  const date = new Date(v.date); const [hh, mm] = String(v.time || '09:00').split(':').map(Number); date.setHours(hh || 0, mm || 0, 0, 0);
+  const out = { note: v.note, type: v.type, amount: v.amount, account_id: v.account_id, category_id: v.category_id, recurrence_rule: rule, date: +date };
+  return out;
+}
+function cadenceToggle(w) {
+  const c = w.querySelector('[name=cadence]').value;
+  w.querySelector('[data-field=days]').style.display = c === 'Custom' ? '' : 'none';
+  w.querySelector('[name=dom]').closest('.field').style.display = c === 'MonthlyDay' ? '' : 'none';
+}
+const cadenceOpen = (w) => { cadenceToggle(w); w.querySelector('[name=cadence]').addEventListener('change', () => cadenceToggle(w)); };
 const payoutFields = () => [
   { key: 'title', label: 'Title', required: true },
   { key: 'amount', label: 'Amount', type: 'money', required: true, half: true },
@@ -431,7 +557,7 @@ const subscriptions = {
         <span class="cat-ico">${L.icon(catOf(t.category_id)?.icon_res_id)}</span>
         <div class="acc-main"><strong>${esc(t.note || catOf(t.category_id)?.name || 'Recurring')}</strong><small>${esc(L.scheduleLabel(t.recurrence_rule, t.date))} · next ${fmtDate(next)} · ${esc(accName(t.account_id))}</small></div>
         <div class="acc-bal"><strong class="${t.type === 'Income' ? 'pos' : 'neg'}">${money(t.type === 'Income' ? t.amount : -t.amount, cur, { sign: true })}</strong><small class="muted">≈ ${money(L.monthlyEquivalent(t.amount, t.recurrence_rule), cur)}/mo</small></div>
-        <div class="row-actions"><button class="icon-btn" title="Log payment now" data-action="logSub" data-id="${t.id}">✔</button><button class="icon-btn" title="Edit" data-action="editSub" data-id="${t.id}">✎</button>
+        <div class="row-actions"><button class="icon-btn" title="${t.type === 'Income' ? 'Mark received' : 'Mark paid'}" data-action="logSub" data-id="${t.id}">✔</button><button class="icon-btn" title="Skip to next cycle" data-action="skipSub" data-id="${t.id}">⏭</button><button class="icon-btn" title="Edit" data-action="editSub" data-id="${t.id}">✎</button>
         <button class="icon-btn" title="Stop" data-action="stopSub" data-id="${t.id}">⏹</button><button class="icon-btn" title="Delete" data-action="delSub" data-id="${t.id}">🗑</button></div></div>`).join('') : empty('No recurring items')}</div>
       <h3>Planned payouts</h3><div class="list">${pend.length ? pend.map((p) => `<div class="acc-row">
         <span class="cat-ico">${p.priority === 'HIGH' ? '🔴' : p.priority === 'LOW' ? '⚪' : '🟡'}</span>
@@ -442,15 +568,16 @@ const subscriptions = {
         <div class="acc-bal"><strong>${money(p.amount, p.currency_code)}</strong></div><div class="row-actions">${p.status === 'PAID' ? `<button class="btn small ghost" data-action="unpay" data-id="${p.id}">Undo</button>` : ''}</div></div>`).join('')}</div>` : ''}`;
   },
   actions: {
-    addSub: () => (store.all('accounts').length ? formModal('New recurring item', subFields(), { type: 'Expense', recurrence_rule: 'Monthly', date: Date.now(), account_id: store.all('accounts')[0]?.id }, { wide: true, onSubmit: (v) => { L.addTransaction({ ...v, status: 'Planned', labels: '[]' }); toast('Recurring item added'); } }) : toast('Add an account first', 'warn')),
-    editSub: (el) => { const t = store.get('transactions', el.dataset.id); return formModal('Edit recurring item', subFields(), t, { wide: true, onSubmit: (v) => { store.update('transactions', t.id, v); toast('Saved'); } }); },
+    addSub: () => (store.all('accounts').length ? formModal('New recurring item', subFields(), ruleToForm({ type: 'Expense', recurrence_rule: 'Monthly', date: Date.now(), account_id: store.all('accounts')[0]?.id }), { wide: true, onOpen: cadenceOpen, onSubmit: (v) => { L.addTransaction({ ...formToRule(v), status: 'Planned', labels: '[]' }); toast('Recurring item added'); } }) : toast('Add an account first', 'warn')),
+    editSub: (el) => { const t = store.get('transactions', el.dataset.id); return formModal('Edit recurring item', subFields(), ruleToForm(t), { wide: true, onOpen: cadenceOpen, onSubmit: (v) => { store.update('transactions', t.id, formToRule(v)); toast('Saved'); } }); },
+    skipSub: (el) => { const t = store.get('transactions', el.dataset.id); const u = L.skipRecurringCycle(t); undo.set(`Skipped to ${fmtDate(store.get('transactions', t.id).date)}`, u); },
     stopSub: async (el) => { if (await confirmDialog('Stop this recurring item?', 'It will no longer repeat or appear in forecasts as recurring.', 'Stop', 'primary')) { store.update('transactions', el.dataset.id, { recurrence_rule: 'None' }); toast('Stopped'); } },
     delSub: async (el) => { if (await confirmDialog('Delete recurring item?', 'This cannot be undone.')) { store.remove('transactions', el.dataset.id); toast('Deleted'); } },
-    logSub: (el) => { const t = store.get('transactions', el.dataset.id); return formModal(`Log payment — ${t.note || 'recurring'}`, [{ key: 'amount', label: 'Amount', type: 'money', required: true, half: true }, { key: 'account_id', label: 'Account', type: 'select', numeric: true, options: accountOptions(), half: true }], t, { onSubmit: (v) => { L.addTransaction({ type: t.type, amount: v.amount, account_id: v.account_id, category_id: t.category_id, date: Date.now(), status: 'Cleared', note: t.note, labels: JSON.stringify(['Subscription']) }); toast('Payment logged'); } }); },
+    logSub: (el) => { const t = store.get('transactions', el.dataset.id), inc = t.type === 'Income'; return formModal(`${inc ? 'Receive' : 'Pay'} — ${t.note || 'recurring'}`, [{ key: 'amount', label: 'Amount', type: 'money', required: true, half: true }, { key: 'account_id', label: 'Account', type: 'select', numeric: true, options: accountOptions(), half: true }, { key: 'note', label: 'Note (optional)' }, { key: 'advance', label: 'Advance to next schedule cycle (moves next due date forward)', type: 'checkbox' }], { amount: t.amount, account_id: t.account_id, advance: 1 }, { submitLabel: inc ? 'Mark received' : 'Mark paid', onSubmit: (v) => { const u = L.payRecurring(t, { amount: v.amount, accountId: v.account_id, advance: !!v.advance, note: v.note }); undo.set(`${inc ? 'Received' : 'Paid'}: ${t.note || t.type}`, u); } }); },
     addPayout: () => formModal('New planned payout', payoutFields(), { currency_code: L.base(), priority: 'NORMAL', due_date: Date.now() }, { wide: true, onSubmit: (v) => { store.insert('planned_payouts', { ...v, status: 'PENDING', created_at: Date.now() }); toast('Payout planned'); } }),
     editPayout: (el) => { const p = store.get('planned_payouts', el.dataset.id); return formModal('Edit payout', payoutFields(), p, { wide: true, onSubmit: (v) => { store.update('planned_payouts', p.id, v); toast('Saved'); } }); },
     delPayout: async (el) => { if (await confirmDialog('Delete payout?', 'This cannot be undone.')) { store.remove('planned_payouts', el.dataset.id); toast('Deleted'); } },
-    payPayout: (el) => { const p = store.get('planned_payouts', el.dataset.id); return formModal(`Mark paid — ${p.title}`, [{ key: 'account', label: 'Paid from', type: 'select', numeric: true, options: accountOptions(), required: true }, { key: 'amount', label: 'Actual amount', type: 'money', required: true }], { account: p.target_account_id ?? store.all('accounts')[0]?.id, amount: p.amount }, { onSubmit: (v) => { L.markPayoutPaid(p, v.account, v.amount); toast('Marked paid'); } }); },
+    payPayout: (el) => { const p = store.get('planned_payouts', el.dataset.id); return formModal(`Mark paid — ${p.title}`, [{ key: 'account', label: 'Paid from', type: 'select', numeric: true, options: accountOptions(), required: true }, { key: 'amount', label: 'Actual amount', type: 'money', required: true }], { account: p.target_account_id ?? store.all('accounts')[0]?.id, amount: p.amount }, { onSubmit: (v) => { L.markPayoutPaid(p, v.account, v.amount); undo.set(`Paid: ${p.title}`, () => L.unmarkPayoutPaid(store.get('planned_payouts', p.id))); } }); },
     unpay: async (el) => { const p = store.get('planned_payouts', el.dataset.id); if (await confirmDialog('Undo payment?', 'The expense transaction that was logged for it will be deleted.', 'Undo', 'primary')) { L.unmarkPayoutPaid(p); toast('Payment undone'); } },
   },
 };
@@ -481,7 +608,7 @@ const commissions = {
         const got = pm.filter((m) => m.status === 'Paid').reduce((s, m) => s + m.amount, 0);
         return `<div class="card"><h3>${esc(p.project_name)} <small class="badge ${p.status === 'Active' ? '' : 'pos'}">${esc(p.status)}</small>
           <span class="row-actions"><button class="icon-btn" data-action="editProject" data-id="${p.id}">✎</button><button class="icon-btn" data-action="delProject" data-id="${p.id}">🗑</button></span></h3>
-          <p class="muted">${esc(p.client || 'No client')} · ${money(got)} received of ${money(p.total_expected_fee)}</p>${progressBar(p.total_expected_fee ? got / p.total_expected_fee : 0, 2)}
+          <p class="muted">${esc(p.client || 'No client')} · ${money(got)} received of ${money(p.total_expected_fee)}</p>${progressBar(p.total_expected_fee ? got / p.total_expected_fee : 0, 2, { good: true })}
           <div class="list">${pm.map((m) => `<div class="mini-row"><span>${m.status === 'Paid' ? '✅' : '⏳'} ${esc(m.title)}<br><small class="muted">${m.status === 'Paid' ? 'Paid ' + fmtDate(m.paid_at) : 'Expected ' + fmtDate(m.expected_date)}</small></span>
             <span class="row"><strong>${money(m.amount)}</strong>${m.status === 'Pending' ? `<button class="btn small" data-action="payMilestone" data-id="${m.id}">Mark paid</button>` : ''}
             <button class="icon-btn" data-action="editMilestone" data-id="${m.id}">✎</button><button class="icon-btn" data-action="delMilestone" data-id="${m.id}">🗑</button></span></div>`).join('')}</div>
@@ -593,35 +720,125 @@ const cards = {
     add: () => formModal('New card', cardFields(), { card_type: 'DEBIT', card_network: 'VISA', currency_code: L.base(), card_finish: 'OBSIDIAN_GOLD', expiry_month: 12, expiry_year: 28 }, { wide: true, onSubmit: (v) => { store.insert('payment_cards', { ...numDefaults(v), created_at: Date.now() }); toast('Card saved'); } }),
     edit: (el) => { const c = store.get('payment_cards', el.dataset.id); return formModal('Edit card', cardFields(), c, { wide: true, onSubmit: (v) => { store.update('payment_cards', c.id, numDefaults(v)); toast('Card updated'); } }); },
     del: async (el) => { if (await confirmDialog('Delete card?', 'This removes it from every synced device.')) { store.remove('payment_cards', el.dataset.id); toast('Card deleted'); } },
-    reveal: (el) => { const id = Number(el.dataset.id); if (revealed.has(id)) revealed.delete(id); else { revealed.add(id); setTimeout(() => { revealed.delete(id); store.emit(); }, 30000); } store.emit(); },
+    reveal: async (el) => { const id = Number(el.dataset.id); if (revealed.has(id)) revealed.delete(id); else {
+      if (lock.enabled && lock.requireForCards && !(await askPin({ title: 'Reveal card details', sub: 'Enter your PIN to show the full number and CVV' }))) return;
+      revealed.add(id); setTimeout(() => { revealed.delete(id); store.emit(); }, 30000); } store.emit(); },
     freeze: (el) => { const c = store.get('payment_cards', el.dataset.id); store.update('payment_cards', c.id, { is_frozen: c.is_frozen ? 0 : 1 }); },
     charge: (el) => { const c = store.get('payment_cards', el.dataset.id); return formModal(`Log charge — ${c.card_name}`, [{ key: 'amount', label: 'Amount', type: 'money', required: true, half: true }, { key: 'category', label: 'Category', type: 'select', numeric: true, options: categoryOptions('Expense'), half: true }, { key: 'note', label: 'Merchant / note' }, { key: 'account', label: c.card_type === 'CREDIT' ? 'Also record in account (optional)' : 'Account (defaults to linked)', type: 'select', numeric: true, options: accountOptions(true) }], {}, { onSubmit: (v) => { L.logCardCharge(c, v.amount, v.category, v.note, v.account); toast('Charge logged'); } }); },
     payBill: (el) => { const c = store.get('payment_cards', el.dataset.id); return formModal(`Pay bill — ${c.card_name}`, [{ key: 'amount', label: 'Payment amount', type: 'money', required: true }, { key: 'account', label: 'Pay from', type: 'select', numeric: true, options: accountOptions(), required: true }, { key: 'note', label: 'Note' }], { amount: c.statement_balance || c.current_credit_used }, { onSubmit: (v) => { L.payCardBill(c, v.amount, v.account, v.note); toast('Payment recorded'); } }); },
   },
 };
 
-// ---------------------------------------------------------------- ANALYTICS
-let anRange = 'month';
+// ---------------------------------------------------------------- ANALYTICS (mirrors AnalyticsScreen tabs)
+let anTab = 'calendar', anRange = 'month', anSel = null;
+const anMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+function monthPicker() {
+  const label = new Date(anMonth.y, anMonth.m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return `<div class="month-pick"><button class="icon-btn" data-action="month" data-d="-1" aria-label="Previous month">‹</button><strong>${esc(label)}</strong><button class="icon-btn" data-action="month" data-d="1" aria-label="Next month">›</button></div>`;
+}
+function calendarTab() {
+  const { y, m } = anMonth, txs = L.monthTxs(y, m), dim = new Date(y, m + 1, 0).getDate(), first = new Date(y, m, 1).getDay();
+  const daily = new Map(); for (const t of txs) { const d = new Date(t.date).getDate(), c = daily.get(d) || { inc: 0, exp: 0 }; if (t.type === 'Income') c.inc += t.amount; if (t.type === 'Expense') c.exp += t.amount; daily.set(d, c); }
+  const maxExp = Math.max(1, ...[...daily.values()].map((v) => v.exp));
+  const rec = new Map(); for (const t of L.recurringTemplates()) for (const d of L.occurrencesInMonth(t.recurrence_rule, t.date, m, y)) { if (!rec.has(d)) rec.set(d, []); rec.get(d).push(t); }
+  const onDay = (ms) => { if (!ms) return 0; const d = new Date(ms); return d.getMonth() === m && d.getFullYear() === y ? d.getDate() : 0; };
+  const debtsD = new Map(); for (const d of store.all('debts').filter((x) => x.status === 'Active')) { const k = onDay(d.due_date); if (k) { if (!debtsD.has(k)) debtsD.set(k, []); debtsD.get(k).push(d); } }
+  const msD = new Map(); for (const x of store.all('milestones').filter((x) => x.status !== 'Paid')) { const k = onDay(x.expected_date); if (k) { if (!msD.has(k)) msD.set(k, []); msD.get(k).push(x); } }
+  const today = new Date(); const isToday = (d) => today.getDate() === d && today.getMonth() === m && today.getFullYear() === y;
+  const inc = txs.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0), exp = txs.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+  const cells = [...Array(first).fill('<div class="hm-cell blank"></div>'), ...Array.from({ length: dim }, (_, i) => {
+    const d = i + 1, v = daily.get(d), heat = v ? Math.min(1, v.exp / maxExp) : 0;
+    return `<button class="hm-cell ${anSel === d ? 'sel' : ''} ${isToday(d) ? 'today' : ''}" data-action="day" data-d="${d}" style="--heat:${heat.toFixed(3)}">
+      <span class="hm-d">${d}</span>${v?.exp ? `<span class="hm-v neg">${money(v.exp).replace(/\.\d\d$/, '')}</span>` : ''}${v?.inc ? `<span class="hm-v pos">+${money(v.inc).replace(/\.\d\d$/, '')}</span>` : ''}
+      <span class="hm-marks">${rec.has(d) ? '<i class="mk rec" title="Recurring"></i>' : ''}${debtsD.has(d) ? '<i class="mk debt" title="Debt due"></i>' : ''}${msD.has(d) ? '<i class="mk ms" title="Milestone"></i>' : ''}</span></button>`;
+  })].join('');
+  let detail = '';
+  if (anSel) {
+    const dayTx = txs.filter((t) => new Date(t.date).getDate() === anSel);
+    detail = `<div class="card"><h3>${fmtDate(+new Date(y, m, anSel), { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+      ${dayTx.length ? `<div class="list">${dayTx.map((t) => txRow(t)).join('')}</div>` : '<p class="muted">No cleared transactions.</p>'}
+      ${(rec.get(anSel) || []).map((t) => `<div class="mini-row"><span><small class="badge">Recurring</small> ${esc(t.note || 'Recurring')}</span><strong class="${t.type === 'Income' ? 'pos' : 'neg'}">${money(t.type === 'Income' ? t.amount : -t.amount, L.base(), { sign: true })}</strong></div>`).join('')}
+      ${(debtsD.get(anSel) || []).map((d) => `<div class="mini-row"><span><small class="badge ${d.type === 'Lent' ? 'pos' : 'neg'}">Debt due</small> ${esc(d.person_name)}</span><strong>${money(d.remaining_amount)}</strong></div>`).join('')}
+      ${(msD.get(anSel) || []).map((x) => `<div class="mini-row"><span><small class="badge pos">Milestone</small> ${esc(x.title)}</span><strong class="pos">${money(x.amount)}</strong></div>`).join('')}</div>`;
+  }
+  return `<div class="kpis big">${kpi('Income', money(inc), 'pos')}${kpi('Expenses', money(exp), 'neg')}${kpi('Net savings', money(inc - exp, L.base(), { sign: true }), inc - exp >= 0 ? 'pos' : 'neg')}${kpi('Logged transactions', String(txs.length))}</div>
+    <div class="card"><h3>Daily cash activity heatmap</h3>
+      <div class="hm-grid">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => `<div class="hm-h">${d}</div>`).join('')}${cells}</div>
+      <div class="legend"><span><i class="mk rec"></i>Recurring</span><span><i class="mk debt"></i>Debt due</span><span><i class="mk ms"></i>Milestone</span><span>Darker = more spending</span></div></div>
+    ${detail}`;
+}
+function forecastTab() {
+  const f = L.monthEndForecast(anMonth.y, anMonth.m);
+  const row = (label, v, cls = '') => `<div class="mini-row"><span>${esc(label)}</span><strong class="${cls}">${money(v, L.base(), { sign: true })}</strong></div>`;
+  return `<section class="hero slim"><div><span class="eyebrow">Month-end forecast · day ${f.daysInMonth}</span><h1 class="hero-num">${money(f.projected)}</h1>
+      <div class="hero-sub"><span>Estimated cash balance accounting for spending velocity, recurring bills, freelance milestones & debt payouts</span></div></div></section>
+    <div class="kpis big">${kpi('Liquid balance now', money(f.liquid))}${kpi('Daily burn rate', money(f.burn), 'neg', `${money(f.spent)} over ${f.currentDay} day(s)`)}${kpi('Safe to spend / day', money(f.safeDaily), 'pos', `${f.daysRemaining} day(s) left`)}</div>
+    <div class="grid">
+      <div class="card"><h3>Cashflow velocity & commitments</h3>
+        ${row('Liquid balance', f.liquid)}${row(`Projected spending (${f.daysRemaining} days × burn)`, -f.burn * f.daysRemaining, 'neg')}
+        ${row('Remaining recurring income', f.recurringIn, 'pos')}${row('Remaining recurring bills', -f.recurringOut, 'neg')}
+        ${row('Debts owed to you, due this month', f.debtIn, 'pos')}${row('Debts you owe, due this month', -f.debtOut, 'neg')}${row('Freelance milestones due', f.freelanceIn, 'pos')}
+        <div class="mini-row total"><span>Projected month-end</span><strong>${money(f.projected)}</strong></div></div>
+      <div class="card"><h3>Scheduled recurring items</h3>
+        ${[...f.recOut, ...f.recIn].length ? [...f.recOut, ...f.recIn].map(({ t, amt }) => `<div class="mini-row"><span>${esc(t.note || 'Recurring')}<br><small class="muted">${esc(L.scheduleLabel(t.recurrence_rule, t.date))}</small></span><strong class="${t.type === 'Income' ? 'pos' : 'neg'}">${money(t.type === 'Income' ? amt : -amt, L.base(), { sign: true })}</strong></div>`).join('') : empty('Nothing left this month')}</div>
+      <div class="card"><h3>Expected debt payouts / due dates</h3>
+        ${[...f.lent, ...f.borrowed].length ? [...f.lent, ...f.borrowed].map((d) => `<div class="mini-row"><span>${esc(d.person_name)} <small class="badge ${d.type === 'Lent' ? 'pos' : 'neg'}">${d.type === 'Lent' ? 'owes you' : 'you owe'}</small><br><small class="muted">Due ${fmtDate(d.due_date)}</small></span><strong class="${d.type === 'Lent' ? 'pos' : 'neg'}">${money(d.remaining_amount)}</strong></div>`).join('') : empty('No debts due this month')}</div>
+      <div class="card"><h3>Expected freelance payouts (milestones)</h3>
+        ${f.milestones.length ? f.milestones.map((x) => `<div class="mini-row"><span>${esc(x.title)}<br><small class="muted">${esc(store.get('freelance_projects', x.project_id)?.project_name || '')} · ${fmtDate(x.expected_date)}</small></span><strong class="pos">${money(x.amount)}</strong></div>`).join('') : empty('No milestones due this month')}</div>
+    </div>`;
+}
+function shiftsTab() {
+  const rows = L.categoryShifts(anMonth.y, anMonth.m);
+  return `<div class="card"><h3>Month-over-month spending shifts</h3>
+    ${rows.length ? `<div class="list">${rows.map((r) => `<div class="mini-row"><span>${L.icon(r.category?.icon_res_id)} ${esc(r.category?.name || 'Deleted category')}<br><small class="muted">${money(r.previous)} → ${money(r.current)}</small></span>
+      <strong class="${r.delta > 0 ? 'neg' : 'pos'}">${r.delta > 0 ? '▲' : r.delta < 0 ? '▼' : '•'} ${r.delta > 0 ? '+' : ''}${r.pct.toFixed(1)}%<br><small>${money(r.delta, L.base(), { sign: true })}</small></strong></div>`).join('')}</div>`
+      : empty('No category expense history available for comparison.')}</div>`;
+}
+function healthTab() {
+  const h = L.healthScore(anMonth.y, anMonth.m), cls = h.total >= 70 ? 'pos' : h.total >= 50 ? 'warn' : 'neg';
+  const pillar = (label, score, max, sub) => `<div class="pillar"><div class="mini-row"><span>${esc(label)}<br><small class="muted">${esc(sub)}</small></span><strong>${score} / ${max} pts</strong></div>${progressBar(score / max, 2, { good: true })}</div>`;
+  return `<div class="grid"><div class="card score-card ${cls}"><div class="score-ring" style="--p:${h.total}"><span>${h.total}</span><small>/ 100</small></div>
+      <div><h2>Financial Health: ${esc(h.grade)}</h2><p class="muted">Offline algorithmic score from savings, budgets, emergency buffer and debt burden.</p></div></div>
+    <div class="card"><h3>Health pillars breakdown</h3>
+      ${pillar('Savings rate', h.savings, 30, `${h.savingsRate.toFixed(1)}% of this month's income saved`)}
+      ${pillar('Budget discipline', h.budget, 25, store.all('budgets').length ? 'Budgets kept within their limits' : 'No budgets set (default points)')}
+      ${pillar('Emergency buffer', h.emergency, 25, `${h.runway.toFixed(1)} months of runway in liquid accounts`)}
+      ${pillar('Debt burden', h.debt, 20, h.activeDebts ? `${h.debtRatio.toFixed(1)}% of net cash owed` : 'No active borrowed debt')}</div>
+    <div class="card span2"><h3>Smart financial recommendations</h3>${h.tips.length ? h.tips.map((t) => `<p class="tip">• ${esc(t)}</p>`).join('') : '<p class="pos">✓ Everything looks healthy — keep it up!</p>'}</div></div>`;
+}
+function overviewTab() {
+  const n = new Date(); let from, to = Date.now();
+  if (anRange === 'month') from = +new Date(n.getFullYear(), n.getMonth(), 1);
+  else if (anRange === 'last') { from = +new Date(n.getFullYear(), n.getMonth() - 1, 1); to = +new Date(n.getFullYear(), n.getMonth(), 1) - 1; }
+  else if (anRange === '3m') from = +new Date(n.getFullYear(), n.getMonth() - 2, 1);
+  else from = +new Date(n.getFullYear(), 0, 1);
+  const cats = L.spendingByCategory(from, to), total = cats.reduce((s, c) => s + c.total, 0);
+  const top = cats.slice(0, 7), other = cats.slice(7).reduce((s, c) => s + c.total, 0);
+  const items = [...top.map((c, i) => ({ label: c.category?.name || 'Uncategorized', value: c.total, color: PALETTE[i] })), ...(other ? [{ label: 'Other', value: other, color: '#9aa0a6' }] : [])];
+  const flow = L.moneyFlow(from, to), days = Math.max(1, Math.ceil((to - from) / 864e5));
+  return `<div class="tabs">${[['month', 'This month'], ['last', 'Last month'], ['3m', '3 months'], ['year', 'This year']].map(([k, l]) => `<button class="tab ${k === anRange ? 'on' : ''}" data-action="range" data-r="${k}">${l}</button>`).join('')}</div>
+    <div class="kpis big">${kpi('Income', money(flow.income), 'pos')}${kpi('Expenses', money(flow.expense), 'neg')}${kpi('Savings rate', flow.income > 0 ? `${Math.round((flow.net / flow.income) * 100)}%` : '—')}${kpi('Avg daily spend', money(flow.expense / days))}</div>
+    <div class="grid"><div class="card"><h3>Spending by category</h3><div class="donut-wrap">${donut(items)}
+      <div class="legend-list">${items.map((i) => `<div class="mini-row"><span><i class="sw" style="background:${i.color}"></i>${esc(i.label)}</span><strong>${money(i.value)} <small class="muted">${total ? Math.round((i.value / total) * 100) : 0}%</small></strong></div>`).join('')}</div></div></div>
+    <div class="card"><h3>Income vs expenses · 12 months</h3>${barPairs(L.monthlyTrends(12), { fmt: (v) => money(v) })}</div></div>`;
+}
+const AN_TABS = [['calendar', 'Calendar & Flow', calendarTab], ['forecast', 'Cashflow Forecast', forecastTab], ['shifts', 'Category Shifts', shiftsTab], ['health', 'Health Score', healthTab], ['overview', 'Spending Overview', overviewTab]];
 const analytics = {
   title: 'Analytics',
   render() {
-    const n = new Date(); let from, to = Date.now();
-    if (anRange === 'month') from = +new Date(n.getFullYear(), n.getMonth(), 1);
-    else if (anRange === 'last') { from = +new Date(n.getFullYear(), n.getMonth() - 1, 1); to = +new Date(n.getFullYear(), n.getMonth(), 1) - 1; }
-    else if (anRange === '3m') from = +new Date(n.getFullYear(), n.getMonth() - 2, 1);
-    else from = +new Date(n.getFullYear(), 0, 1);
-    const cats = L.spendingByCategory(from, to), total = cats.reduce((s, c) => s + c.total, 0);
-    const top = cats.slice(0, 7), other = cats.slice(7).reduce((s, c) => s + c.total, 0);
-    const items = [...top.map((c, i) => ({ label: c.category?.name || 'Uncategorized', value: c.total, color: PALETTE[i] })), ...(other ? [{ label: 'Other', value: other, color: '#9aa0a6' }] : [])];
-    const flow = L.moneyFlow(from, to), days = Math.max(1, Math.ceil((to - from) / 864e5));
-    return `<div class="page-head"><h1>Analytics</h1><div class="tabs">${[['month', 'This month'], ['last', 'Last month'], ['3m', '3 months'], ['year', 'This year']].map(([k, l]) => `<button class="tab ${k === anRange ? 'on' : ''}" data-action="range" data-r="${k}">${l}</button>`).join('')}</div></div>
-      <div class="kpis big">${kpi('Income', money(flow.income), 'pos')}${kpi('Expenses', money(flow.expense), 'neg')}${kpi('Savings rate', flow.income > 0 ? `${Math.round((flow.net / flow.income) * 100)}%` : '—')}${kpi('Avg daily spend', money(flow.expense / days))}</div>
-      <div class="grid"><div class="card"><h3>Spending by category</h3><div class="donut-wrap">${donut(items)}
-        <div class="legend-list">${items.map((i) => `<div class="mini-row"><span><i class="sw" style="background:${i.color}"></i>${esc(i.label)}</span><strong>${money(i.value)} <small class="muted">${total ? Math.round((i.value / total) * 100) : 0}%</small></strong></div>`).join('')}</div></div></div>
-      <div class="card"><h3>Income vs expenses · 12 months</h3>${barPairs(L.monthlyTrends(12), { fmt: (v) => money(v) })}</div></div>`;
+    const tab = AN_TABS.find((t) => t[0] === anTab) || AN_TABS[0];
+    return `<div class="page-head"><h1>Analytics & forecast</h1>${anTab !== 'overview' ? monthPicker() : ''}</div>
+      <div class="tabs">${AN_TABS.map(([k, l]) => `<button class="tab ${k === anTab ? 'on' : ''}" data-action="tab" data-t="${k}">${l}</button>`).join('')}</div>
+      ${tab[2]()}`;
   },
-  actions: { range: (el) => { anRange = el.dataset.r; store.emit(); } },
+  actions: {
+    tab: (el) => { anTab = el.dataset.t; store.emit(); },
+    range: (el) => { anRange = el.dataset.r; store.emit(); },
+    month: (el) => { const d = new Date(anMonth.y, anMonth.m + Number(el.dataset.d), 1); anMonth.y = d.getFullYear(); anMonth.m = d.getMonth(); anSel = null; store.emit(); },
+    day: (el) => { const d = Number(el.dataset.d); anSel = anSel === d ? null : d; store.emit(); },
+    editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
+  },
 };
 
 // ---------------------------------------------------------------- RECEIPTS
@@ -630,8 +847,9 @@ const receipts = {
   render() {
     const list = store.all('receipts_inbox').sort((a, b) => b.captured_at - a.captured_at);
     const pending = list.filter((r) => r.status === 'PENDING');
-    return `<div class="page-head"><div><h1>Receipts inbox</h1><p class="muted">Receipt photos are captured on the phone and stay on it; their details sync here.</p></div></div>
-      <div class="list">${list.length ? list.map((r) => `<div class="acc-row"><span class="cat-ico">${r.status === 'PENDING' ? '🧾' : r.status === 'CONVERTED' ? '✅' : '🗑'}</span>
+    return `<div class="page-head"><div><h1>Receipts inbox</h1><p class="muted">Snap receipts fast, review & classify at your own pace. Photos sync between the phone and the web.</p></div>
+      <label class="btn primary">📷 Add receipt photo<input type="file" accept="image/*" capture="environment" hidden data-action-change="addPhoto"></label></div>
+      <div class="list">${list.length ? list.map((r) => `<div class="acc-row">${isSha(r.image_sha256) ? `<button class="thumb" data-photo="${r.image_sha256}" data-title="${esc(r.note || 'Receipt')}"><img data-sha="${r.image_sha256}" alt="Receipt"></button>` : `<span class="cat-ico" title="${r.image_path ? 'Photo stored on the phone only' : 'No photo'}">${r.status === 'PENDING' ? '🧾' : r.status === 'CONVERTED' ? '✅' : '🗑'}</span>`}
         <div class="acc-main"><strong>${esc(r.note || 'Receipt')}</strong><small>${fmtDateTime(r.captured_at)} · ${esc(r.status)}${r.suggested_amount != null ? ' · ' + money(r.suggested_amount) : ''}</small></div>
         <div class="row-actions">${r.status === 'PENDING' ? `<button class="btn small" data-action="convert" data-id="${r.id}">Convert</button><button class="btn small ghost" data-action="discard" data-id="${r.id}">Discard</button>` : ''}
         <button class="icon-btn" data-action="del" data-id="${r.id}">🗑</button></div></div>`).join('') : empty('No receipts. Snap them from the phone app.')}</div>
@@ -645,7 +863,15 @@ const receipts = {
       { type: r.suggested_type, amount: r.suggested_amount, date: r.captured_at, note: r.note, accountId: store.all('accounts')[0]?.id },
       { onSubmit: (v) => { L.convertReceipt(r, v); toast('Converted to a transaction'); } }); },
     discard: (el) => { store.update('receipts_inbox', el.dataset.id, { status: 'DISCARDED' }); toast('Discarded'); },
-    del: async (el) => { if (await confirmDialog('Delete receipt record?', 'The photo on the phone will no longer be listed.')) { store.remove('receipts_inbox', el.dataset.id); toast('Deleted'); } },
+    del: async (el) => { if (await confirmDialog('Delete receipt record?', 'This removes the receipt (and its photo link) on all devices.')) { store.remove('receipts_inbox', el.dataset.id); toast('Deleted'); } },
+  },
+  changes: {
+    addPhoto: async (el) => {
+      const f = el.files?.[0]; el.value = ''; if (!f) return;
+      let sha; try { toast('Uploading…'); sha = await uploadPhoto(f); } catch (x) { return toast(x.message, 'err'); }
+      await formModal('New receipt', [{ key: 'note', label: 'Merchant / note' }, { key: 'suggested_amount', label: 'Amount (optional)', type: 'money', half: true }, { key: 'suggested_type', label: 'Type', type: 'select', options: [['Expense', 'Expense'], ['Income', 'Income']], half: true }], { suggested_type: 'Expense' },
+        { submitLabel: 'Save to inbox', onSubmit: (v) => { store.insert('receipts_inbox', { ...v, image_path: '', image_sha256: sha, captured_at: Date.now(), status: 'PENDING' }); toast('Receipt saved'); } });
+    },
   },
 };
 
@@ -666,8 +892,20 @@ const settings = {
         <div class="row"><button class="btn primary" data-action="syncNow">Sync now</button><button class="btn" data-action="resetCache">Re-download everything</button><button class="btn danger ghost" data-action="signOut">Sign out</button></div></div>
       <div class="card"><h3>Display</h3>
         <label class="field"><span>Base currency (synced to all devices)</span><select data-action-change="baseCurrency">${L.CURRENCIES.map((c) => `<option value="${c.code}" ${c.code === L.base() ? 'selected' : ''}>${c.code} — ${esc(c.name)}</option>`).join('')}</select></label>
-        <label class="field"><span>Theme (this browser)</span><select data-action-change="theme">${[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${v === theme ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="check"><input type="checkbox" data-action-change="hideMoney" ${viewPrefs.get('hideMoney', false) ? 'checked' : ''}> Hide amounts (privacy mask)</label></div>
+        <label class="field"><span>Theme mode (this browser)</span><select data-action-change="theme">${[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${v === theme ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" data-action-change="includeAssets" ${viewPrefs.get('includeAssets', false) ? 'checked' : ''}> Include assets in hero total</label>
+        <label class="check"><input type="checkbox" data-action-change="hideMoney" ${viewPrefs.get('hideMoney', false) ? 'checked' : ''}> Hide amounts (privacy mask)</label>
+        <a class="btn" href="#/customize">⚙ Customize dashboard cards</a></div>
+      <div class="card span2"><h3>Theme palette</h3><div class="swatches">${PALETTES.map(([k, l, d]) => `<button class="swatch ${viewPrefs.get('palette', 'EMERALD_AURORA') === k ? 'on' : ''}" data-action="palette" data-k="${k}" data-hero="${PALETTES.find((p) => p[0] === k)[3]}"><i class="pal-${k}"></i><strong>${esc(l)}</strong><small>${esc(d)}</small></button>`).join('')}</div>
+        <h3>Hero card atmosphere</h3><div class="swatches">${HERO_STYLES.map(([k, l]) => `<button class="swatch ${viewPrefs.get('hero', 'EMERALD_AURORA') === k ? 'on' : ''}" data-action="hero" data-k="${k}"><i class="hero-sw-${k}"></i><strong>${esc(l)}</strong></button>`).join('')}</div>
+        </div>
+      <div class="card"><h3>App lock (this browser)</h3>
+        ${lock.enabled ? `<p class="muted">🔒 Locked with a 4-digit PIN. Wrong PINs trigger cooldowns; 10 in a row signs this browser out.</p>
+          <label class="field"><span>Lock again</span><select data-action-change="lockTimeout">${TIMEOUT_OPTIONS.map(([v, l]) => `<option value="${v}" ${v === lock.timeoutMode ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><small>Also locks after 10 minutes without activity.</small></label>
+          <label class="check"><input type="checkbox" data-action-change="lockCards" ${lock.requireForCards ? 'checked' : ''}> Require PIN to reveal card numbers & CVV</label>
+          <div class="row"><button class="btn" data-action="lockNow">Lock now</button><button class="btn" data-action="changePin">Change PIN</button><button class="btn danger ghost" data-action="disableLock">Turn off</button></div>`
+        : `<p class="muted">Protect this browser with a 4-digit PIN, like the phone app's security lock. Recommended — card numbers and CVVs are visible here.</p>
+          <button class="btn primary" data-action="enableLock">Set up PIN lock</button>`}</div>
       <div class="card span2"><h3>Exchange rates <span class="row-actions"><button class="btn small" data-action="addRate">＋ Rate</button></span></h3>
         <p class="muted">Used to convert accounts into ${esc(L.base())}. Without a rate, built-in reference rates are used.</p>
         <div class="list">${rates.length ? rates.map((r) => `<div class="mini-row"><span>1 ${esc(r.from_currency)} = <strong>${r.rate}</strong> ${esc(r.to_currency)} <small class="muted">updated ${fmtDate(r.last_updated)}</small></span>
@@ -675,7 +913,8 @@ const settings = {
       <div class="card"><h3>Devices</h3><div class="list">${devicesCache ? devicesCache.devices.map((d) => `<div class="mini-row"><span>${d.kind === 'android' ? '📱' : d.kind === 'web' ? '🖥' : '🔌'} ${esc(d.name || 'Device')} #${d.device_no}${d.device_no === devicesCache.current ? ' <small class="badge">this one</small>' : ''}<br>
         <small class="muted">${d.revoked ? 'Signed out' : 'Last seen ' + fmtDateTime(d.last_seen)}</small></span>${!d.revoked && d.device_no !== devicesCache.current ? `<button class="btn small ghost danger" data-action="revoke" data-id="${d.device_no}">Sign out</button>` : ''}</div>`).join('') : '<p class="muted">Loading…</p>'}</div></div>
       <div class="card"><h3>Security & data</h3>
-        <div class="row"><button class="btn" data-action="changePassword">Change password</button><button class="btn" data-action="exportJson">Export JSON</button><button class="btn" data-action="exportCsv">Export CSV</button></div>
+        <div class="row"><button class="btn" data-action="changePassword">Change password</button><button class="btn" data-action="exportJson">Export JSON</button><button class="btn" data-action="exportCsv">Export CSV</button><label class="btn">Import JSON…<input type="file" accept=".json,application/json" data-action-change="importFile" hidden></label></div>
+        <p class="muted">Import accepts the phone app's JSON backup or this web app's export.</p>
         <p class="muted">JSON export contains every record (including card numbers) — store it safely.</p></div>
     </div>`;
   },
@@ -683,6 +922,12 @@ const settings = {
     try { const { api } = await import('./store.js'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
+    palette: (el) => { viewPrefs.set('palette', el.dataset.k); viewPrefs.set('hero', el.dataset.hero); applyTheme(); store.emit(); },
+    hero: (el) => { viewPrefs.set('hero', el.dataset.k); applyTheme(); store.emit(); },
+    enableLock: async () => { const pin = await choosePin(); if (!pin) return; await lock.setPin(pin); lock.setOption('cards', 1); toast('PIN lock enabled'); store.emit(); },
+    changePin: async () => { if (!(await askPin({ title: 'Current PIN', sub: 'Enter your current PIN first' }))) return; const pin = await choosePin(); if (!pin) return; await lock.setPin(pin); toast('PIN changed'); },
+    disableLock: async () => { if (!(await askPin({ title: 'Turn off app lock', sub: 'Enter your PIN to confirm' }))) return; lock.disable(); toast('App lock turned off'); store.emit(); },
+    lockNow: () => lock.lockNow(),
     syncNow: async () => { try { await store.sync(); toast('Synced'); } catch (e) { toast(e.message, 'err'); } },
     resetCache: async () => { if (await confirmDialog('Re-download everything?', 'Clears this browser\'s copy and downloads all data from the server again. Unsynced changes in this browser are lost.', 'Re-download', 'primary')) { await store.resetLocalCache(); toast('Re-downloaded'); } },
     signOut: async () => { if (await confirmDialog('Sign out?', 'This browser\'s local copy will be removed.', 'Sign out', 'primary')) store.signOut(); },
@@ -706,8 +951,22 @@ const settings = {
   },
   changes: {
     baseCurrency: (el) => { store.setPref('base_currency', el.value); toast(`Base currency: ${el.value}`); },
-    theme: (el) => { viewPrefs.set('theme', el.value); document.documentElement.dataset.theme = el.value; },
+    theme: (el) => { viewPrefs.set('theme', el.value); applyTheme(); },
+    includeAssets: (el) => { viewPrefs.set('includeAssets', el.checked); store.emit(); },
     hideMoney: (el) => { viewPrefs.set('hideMoney', el.checked); store.emit(); },
+    importFile: async (el) => {
+      const file = el.files?.[0]; el.value = ''; if (!file) return;
+      let parsed; try { parsed = L.parseBackup(await file.text()); } catch (e) { return toast(e.message, 'err'); }
+      const list = Object.entries(parsed.counts).filter(([, n]) => n).map(([t, n]) => `<li>${esc(t.replace(/_/g, ' '))}: <strong>${n}</strong></li>`).join('');
+      const mode = await modal({ title: 'Import backup', body: `<p>${parsed.fmt === 'android' ? 'Phone app backup' : 'Web export'} · ${esc(file.name)}</p><ul class="import-list">${list}</ul>
+        <p class="muted"><strong>Merge</strong> adds these records alongside your current data. <strong>Replace</strong> deletes all current data on <u>every synced device</u> first (like the phone's import).</p>`,
+        actions: [{ label: 'Cancel' }, { label: 'Merge', value: 'merge' }, { label: 'Replace everything', kind: 'danger', value: 'replace' }] });
+      if (!mode) return;
+      if (mode === 'replace' && !(await confirmDialog('Replace all data?', 'Every account, transaction and record will be deleted on all devices and replaced with the file contents.', 'Replace everything'))) return;
+      const n = L.importBackup(parsed, mode); toast(`Imported ${n} records`);
+    },
+    lockTimeout: (el) => { lock.setOption('timeout', el.value); toast('Saved'); },
+    lockCards: (el) => { lock.setOption('cards', el.checked ? 1 : 0); toast('Saved'); },
   },
 };
 function download(name, text, type) {
@@ -716,9 +975,47 @@ function download(name, text, type) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export const PAGES = { dashboard, accounts, account: accountDetail, records, categories, budgets, debts, subscriptions, commissions, assets, cards, analytics, receipts, settings };
+// ---------------------------------------------------------------- ABOUT & SUPPORT / GET THE APP (Android-only screens' web equivalents)
+const REPO = 'https://github.com/Rohan-Reyes/Freefinance';
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; store.emit(); });
+const about = {
+  title: 'About & support',
+  render() {
+    return `<div class="page-head"><h1>About My Finance</h1></div>
+    <div class="grid">
+      <div class="card span2 about-hero"><span class="logo">₱</span><div><h2>My Finance</h2><p class="muted">Offline-first personal wealth, multi-currency ledger & financial dashboard — now with self-hosted sync between Android and the web.</p>
+        <p>Created by <strong>Rohan Reyes</strong></p></div></div>
+      <div class="card"><h3>☕ Support the developer</h3><p class="muted">Support ongoing offline-first development & updates.</p>
+        <a class="btn primary" href="https://buymeacoffee.com/rohan_reyes" target="_blank" rel="noopener noreferrer">Buy Me a Coffee ↗</a></div>
+      <div class="card"><h3>Privacy</h3><p class="muted">No ads, no trackers, no analytics. Your data lives on your own sync server; this browser keeps an offline copy that is removed when you sign out.</p></div>
+      <div class="card"><h3>Source code</h3><p class="muted">MIT licensed.</p><a class="btn" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub repository ↗</a></div>
+      <div class="card"><h3>This web app</h3><div class="mini-row"><span>Signed in as</span><strong>${esc(store.auth.username)}</strong></div><div class="mini-row"><span>Device</span><strong>#${store.auth.deviceNo}</strong></div>
+        <div class="mini-row"><span>Records synced</span><strong>${Object.keys(store.tables).reduce((n, t) => n + store.tables[t].size, 0)}</strong></div></div>
+    </div>`;
+  },
+  actions: {},
+};
+const getApp = {
+  title: 'Get the app',
+  render() {
+    return `<div class="page-head"><h1>Get the app</h1></div>
+    <div class="grid">
+      <div class="card"><h3>📱 Android app</h3><p class="muted">Download the latest APK from GitHub Releases, or build it from source with <code>./gradlew assembleDebug</code>.</p>
+        <div class="row"><a class="btn primary" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">Releases ↗</a><a class="btn" href="${REPO}" target="_blank" rel="noopener noreferrer">Source ↗</a></div>
+        <p class="muted">Then open <strong>Settings → Data Vault, Sync & Integrity → Server Sync</strong> and sign in with this account.</p></div>
+      <div class="card"><h3>🖥 Install this web app</h3><p class="muted">Add My Finance to your home screen or desktop — it opens in its own window and works offline (the web equivalent of the phone's home-screen widgets & quick actions).</p>
+        ${installPrompt ? '<button class="btn primary" data-action="install">Install app</button>' : '<p class="muted">In your browser menu choose <strong>Install app</strong> / <strong>Add to Home Screen</strong>.</p>'}</div>
+      <div class="card span2"><h3>Backups</h3><p class="muted">The phone app's Google Drive vault isn't available on the web. Your data is already kept on your sync server, and you can export a full JSON backup or a spreadsheet-ready CSV any time.</p>
+        <a class="btn" href="#/settings">Open export & import</a></div>
+    </div>`;
+  },
+  actions: { install: async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; store.emit(); } },
+};
+
+export const PAGES = { dashboard, customize, about, 'get-app': getApp, accounts, account: accountDetail, records, categories, budgets, debts, subscriptions, commissions, assets, cards, analytics, receipts, settings };
 export const NAV = [
   ['dashboard', '◧', 'Dashboard'], ['accounts', '🏦', 'Accounts'], ['records', '☰', 'Records'], ['budgets', '◔', 'Budgets'],
   ['subscriptions', '↻', 'Subscriptions'], ['debts', '⇆', 'Debts'], ['commissions', '💼', 'Commissions'], ['assets', '💎', 'Assets'],
-  ['cards', '💳', 'Cards'], ['analytics', '📊', 'Analytics'], ['receipts', '🧾', 'Receipts'], ['categories', '🏷', 'Categories'], ['settings', '⚙', 'Settings'],
+  ['cards', '💳', 'Cards'], ['analytics', '📊', 'Analytics'], ['receipts', '🧾', 'Receipts'], ['categories', '🏷', 'Categories'], ['settings', '⚙', 'Settings'], ['get-app', '📲', 'Get the app'], ['about', 'ℹ', 'About & support'],
 ];

@@ -1,6 +1,6 @@
 // Finance logic mirrored from the Android app (FinanceRepository, DAOs, DashboardViewModel,
 // CurrencyUtils, RecurrenceHelper, ForecastCashFlowUseCase) so both clients show the same numbers.
-import { store } from './store.js';
+import { store, SCHEMA } from './store.js';
 
 // ---------------- currencies (CurrencyUtils) ----------------
 export const CURRENCIES = [
@@ -297,7 +297,8 @@ export function payCardBill(card, amount, sourceAccountId, note) {
     note?.trim() || `Credit Card Bill Payment: ${card.card_name} (••${lastFour(card)})`);
 }
 export function convertReceipt(r, { accountId, amount, type, categoryId, date, note }) {
-  const tx = addTransaction({ account_id: Number(accountId), type, amount, category_id: categoryId, date, status: 'Cleared', labels: '["Receipt"]', note });
+  const tx = addTransaction({ account_id: Number(accountId), type, amount, category_id: categoryId, date, status: 'Cleared', labels: '["Receipt"]', note,
+    ...(r.image_sha256 ? { proof_sha256: r.image_sha256 } : {}) });
   store.update('receipts_inbox', r.id, { status: 'CONVERTED', converted_transaction_id: tx.id, suggested_amount: amount, suggested_type: type });
 }
 // FinanceRepository.adjustAccountBalance: keep current = initial + cleared sum
@@ -305,3 +306,185 @@ export function adjustAccountBalance(acc, target) {
   const sum = balanceOf(acc) - (acc.initial_balance || 0);
   store.update('accounts', acc.id, { initial_balance: target - sum, current_balance: target });
 }
+
+// ---------------- Analytics screen (AnalyticsScreen.kt) ----------------
+// Note: the Android screen sums raw currentBalance without currency conversion; mirrored for parity.
+export function monthTxs(year, month) {
+  return store.all('transactions').filter((t) => { const d = new Date(t.date); return isCleared(t) && d.getMonth() === month && d.getFullYear() === year; });
+}
+export const remainingMonthlyAmount = (amount, rule, start, currentDay, month, year) =>
+  amount * occurrencesInMonth(rule, start, month, year).filter((d) => d >= currentDay).length;
+
+export function monthEndForecast(year, month) {
+  const n = new Date(), isCurrent = n.getMonth() === month && n.getFullYear() === year;
+  const currentDay = isCurrent ? n.getDate() : 1, daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysRemaining = Math.max(1, daysInMonth - currentDay + 1);
+  const liquid = store.all('accounts').filter((a) => a.include_in_tally && !a.is_locked).reduce((s, a) => s + balanceOf(a), 0);
+  const spent = monthTxs(year, month).filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+  const burn = currentDay > 0 ? spent / currentDay : 0;
+  const rec = recurringTemplates();
+  const recOut = rec.filter((t) => t.type === 'Expense').map((t) => ({ t, amt: remainingMonthlyAmount(t.amount, t.recurrence_rule, t.date, currentDay, month, year) }));
+  const recIn = rec.filter((t) => t.type === 'Income').map((t) => ({ t, amt: remainingMonthlyAmount(t.amount, t.recurrence_rule, t.date, currentDay, month, year) }));
+  const inMonth = (ms) => { if (!ms) return false; const d = new Date(ms); return d.getMonth() === month && d.getFullYear() === year && d.getDate() >= currentDay; };
+  const debts = store.all('debts').filter((d) => up(d.status) === 'ACTIVE' && inMonth(d.due_date));
+  const lent = debts.filter((d) => up(d.type) === 'LENT'), borrowed = debts.filter((d) => up(d.type) === 'BORROWED');
+  const milestones = store.all('milestones').filter((m) => up(m.status) !== 'PAID' && inMonth(m.expected_date));
+  const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+  const recurringIn = sum(recIn, (x) => x.amt), recurringOut = sum(recOut, (x) => x.amt);
+  const debtIn = sum(lent, (d) => d.remaining_amount), debtOut = sum(borrowed, (d) => d.remaining_amount), freelanceIn = sum(milestones, (m) => m.amount);
+  return {
+    currentDay, daysInMonth, daysRemaining, liquid, spent, burn, recurringIn, recurringOut, debtIn, debtOut, freelanceIn,
+    recIn: recIn.filter((x) => x.amt > 0), recOut: recOut.filter((x) => x.amt > 0), lent, borrowed, milestones,
+    safeDaily: Math.max(0, liquid + recurringIn - recurringOut - debtOut) / daysRemaining,
+    projected: liquid - burn * daysRemaining + recurringIn + debtIn + freelanceIn - recurringOut - debtOut,
+  };
+}
+
+export function categoryShifts(year, month) {
+  const prev = new Date(year, month - 1, 1);
+  const totals = (txs) => { const m = new Map(); for (const t of txs) if (t.type === 'Expense' && t.category_id != null) m.set(t.category_id, (m.get(t.category_id) || 0) + t.amount); return m; };
+  const cur = totals(monthTxs(year, month)), pre = totals(monthTxs(prev.getFullYear(), prev.getMonth()));
+  return [...new Set([...cur.keys(), ...pre.keys()])].map((id) => {
+    const c = cur.get(id) || 0, p = pre.get(id) || 0, delta = c - p;
+    return { category: store.get('categories', id), current: c, previous: p, delta, pct: p > 0 ? (delta / p) * 100 : c > 0 ? 100 : 0 };
+  }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+export function healthScore(year, month) {
+  const txs = monthTxs(year, month);
+  const income = txs.filter((t) => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+  const expense = txs.filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
+  const savingsRate = income > 0 ? Math.max(0, ((income - expense) / income) * 100) : 0;
+  const savings = savingsRate >= 30 ? 30 : savingsRate >= 20 ? 24 : savingsRate >= 10 ? 16 : savingsRate > 0 ? 8 : 0;
+  const budgets = store.all('budgets');
+  const adhered = budgets.filter((b) => store.all('transactions').filter((t) => t.category_id === b.category_id && t.type === 'Expense').reduce((s, t) => s + t.amount, 0) <= b.amount_limit).length;
+  const budget = budgets.length ? Math.round((adhered / budgets.length) * 25) : 20;
+  const accs = store.all('accounts');
+  const liquid = accs.filter((a) => a.include_in_tally && !a.is_locked).reduce((s, a) => s + balanceOf(a), 0);
+  const runway = expense > 0 ? liquid / expense : 6;
+  const emergency = runway >= 6 ? 25 : runway >= 3 ? 18 : runway >= 1 ? 10 : 4;
+  const activeDebts = store.all('debts').filter((d) => up(d.type) === 'BORROWED' && up(d.status) === 'ACTIVE').reduce((s, d) => s + d.remaining_amount, 0);
+  const worth = accs.filter((a) => a.include_in_tally).reduce((s, a) => s + balanceOf(a), 0);
+  const debtRatio = worth > 0 ? (activeDebts / worth) * 100 : activeDebts > 0 ? 100 : 0;
+  const debt = activeDebts === 0 ? 20 : debtRatio <= 15 ? 17 : debtRatio <= 30 ? 12 : debtRatio <= 50 ? 6 : 2;
+  const total = Math.min(100, savings + budget + emergency + debt);
+  const grade = total >= 85 ? 'Excellent' : total >= 70 ? 'Good' : total >= 50 ? 'Fair' : 'Needs Attention';
+  const tips = [];
+  if (savingsRate < 20) tips.push('Aim to save at least 20% of monthly income to build long-term compounding growth.');
+  if (runway < 3) tips.push('Your emergency fund is under 3 months. Prioritize building liquid savings in your cash accounts.');
+  if (activeDebts > 0) tips.push(`Focus on clearing active liabilities (${activeDebts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${base()}) to boost your debt score.`);
+  if (!budgets.length) tips.push('Set monthly category budget limits in the Budgets tab to track and curb overspending.');
+  return { total, grade, savings, budget, emergency, debt, savingsRate, runway, activeDebts, debtRatio, income, expense, tips };
+}
+
+// ---------------- recurring payment + cycle advance (DashboardViewModel.receiveOrPayNextPayment) ----------------
+export function nextOccurrenceStrictlyAfter(afterMs, startMs, rule) {
+  if (!rule || up(rule) === 'NONE') return startMs;
+  const s = new Date(startMs), c = new Date(afterMs);
+  c.setHours(s.getHours(), s.getMinutes(), 0, 0); c.setDate(c.getDate() + 1);
+  for (let i = 0; i <= 120; i++) {
+    if (occurrencesInMonth(rule, startMs, c.getMonth(), c.getFullYear()).includes(c.getDate())) return c.getTime();
+    c.setDate(c.getDate() + 1);
+  }
+  return startMs;
+}
+/** Logs the payment of a recurring template; optionally advances its next cycle. Returns an undo function. */
+export function payRecurring(item, { amount = item.amount, accountId = item.account_id, advance = true, note } = {}) {
+  const isIncome = up(item.type) === 'INCOME';
+  const title = item.note || item.type;
+  const tx = addTransaction({ amount, type: isIncome ? 'Income' : 'Expense', account_id: Number(accountId), category_id: item.category_id,
+    date: Date.now(), status: 'Cleared', labels: JSON.stringify([...labelsOf(item), 'recurring_cleared', isIncome ? 'inflow' : 'outflow']),
+    note: note?.trim() || `${title} (${isIncome ? 'Received' : 'Paid'})` });
+  const original = { ...item };
+  const willAdvance = advance && up(item.recurrence_rule) !== 'NONE';
+  if (willAdvance) store.update('transactions', item.id, { date: nextOccurrenceStrictlyAfter(item.date, item.date, item.recurrence_rule) });
+  return () => { store.remove('transactions', tx.id); if (willAdvance) store.put('transactions', original); };
+}
+export function skipRecurringCycle(item) {
+  const original = { ...item };
+  store.update('transactions', item.id, { date: nextOccurrenceStrictlyAfter(item.date, item.date, item.recurrence_rule) });
+  return () => store.put('transactions', original);
+}
+
+// ---------------- per-account cash movement (AccountLogScreen) ----------------
+export function cashMovement(accountId) {
+  let inflow = 0, outflow = 0;
+  for (const t of store.all('transactions')) {
+    if (!isCleared(t)) continue;
+    if (t.type === 'Income' && t.account_id === accountId) inflow += t.amount;
+    else if (t.type === 'Expense' && t.account_id === accountId) outflow += t.amount;
+    else if (t.type === 'Transfer') { if (t.to_account_id === accountId) inflow += t.amount; if (t.account_id === accountId) outflow += t.amount; }
+  }
+  return { inflow, outflow, net: inflow - outflow };
+}
+// TransactionDao.getCategoryExpenses: all-time cleared expenses by category
+export function categoryExpensesAllTime() {
+  const m = new Map();
+  for (const t of store.all('transactions')) if (t.type === 'Expense' && t.status === 'Cleared' && t.category_id != null && store.get('categories', t.category_id)) m.set(t.category_id, (m.get(t.category_id) || 0) + t.amount);
+  return [...m.entries()].map(([id, total]) => ({ category: store.get('categories', id), total })).filter((x) => x.total > 0).sort((a, b) => b.total - a.total);
+}
+
+// ---------------- JSON import (Android DataSyncManager format or this web app's export) ----------------
+const ANDROID_TABLES = { categories: 'categories', accounts: 'accounts', transactions: 'transactions', budgets: 'budgets', debts: 'debts',
+  freelanceProjects: 'freelance_projects', milestones: 'milestones', exchangeRates: 'exchange_rates', paymentCards: 'payment_cards',
+  assets: 'assets', plannedPayouts: 'planned_payouts', receiptsInbox: 'receipts_inbox' };
+const REFS = { account_id: 'accounts', to_account_id: 'accounts', parent_account_id: 'accounts', linked_account_id: 'accounts', target_account_id: 'accounts',
+  category_id: 'categories', parent_category_id: 'categories', project_id: 'freelance_projects',
+  paid_transaction_id: 'transactions', converted_transaction_id: 'transactions' };
+const DATE_COLS = new Set(['date', 'start_date', 'end_date', 'due_date', 'created_at', 'expected_date', 'paid_at', 'locked_until', 'last_updated', 'purchase_date', 'paid_date', 'captured_at']);
+const snake = (k) => k.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
+
+export function parseBackup(text) {
+  let root;
+  try { root = JSON.parse(text); } catch { throw new Error('Not a valid JSON file'); }
+  if (!root || typeof root !== 'object') throw new Error('Unrecognized backup format');
+  const out = {}; let fmt = 'web';
+  for (const [key, val] of Object.entries(root)) {
+    if (!Array.isArray(val)) continue;
+    const tbl = ANDROID_TABLES[key] || (SCHEMA_KEYS[key] ? key : null);
+    if (!tbl) continue;
+    if (ANDROID_TABLES[key] && key !== tbl) fmt = 'android';
+    out[tbl] = val.map((raw) => {
+      const row = {};
+      for (const [k, v] of Object.entries(raw)) {
+        const col = SCHEMA_KEYS[tbl].has(k) ? k : snake(k);
+        if (col !== 'id' && !SCHEMA_KEYS[tbl].has(col)) continue;
+        if (col !== k) fmt = 'android';
+        let x = v;
+        if (typeof x === 'boolean') x = x ? 1 : 0;
+        if (col === 'labels' && Array.isArray(x)) x = JSON.stringify(x);
+        if (DATE_COLS.has(col) && typeof x === 'string' && x) x = Number.isNaN(Date.parse(x)) ? Number(x) || null : Date.parse(x);
+        row[col] = x;
+      }
+      return row;
+    });
+  }
+  const counts = Object.fromEntries(Object.entries(out).map(([t, r]) => [t, r.length]));
+  if (!Object.values(counts).some((n) => n > 0)) throw new Error('The file contains no records');
+  const currency = typeof root.baseCurrency === 'string' ? root.baseCurrency : null;
+  return { tables: out, counts, fmt, currency };
+}
+let SCHEMA_KEYS = {};
+export function initSchemaKeys(SCHEMA) { SCHEMA_KEYS = Object.fromEntries(Object.entries(SCHEMA).map(([t, f]) => [t, new Set(Object.keys(f()))])); }
+
+/** mode 'replace': deletes everything first (on all synced devices). 'merge': adds alongside existing data. */
+export function importBackup(parsed, mode) {
+  if (mode === 'replace') for (const t of Object.keys(SCHEMA_KEYS)) for (const r of store.all(t)) store.remove(t, r.id);
+  const idMap = Object.fromEntries(Object.keys(parsed.tables).map((t) => [t, new Map()]));
+  for (const [t, rows] of Object.entries(parsed.tables)) for (const r of rows) if (r.id != null) idMap[t].set(Number(r.id), store.nextId());
+  let n = 0;
+  for (const [t, rows] of Object.entries(parsed.tables)) {
+    for (const r of rows) {
+      const row = { ...r, id: r.id != null ? idMap[t].get(Number(r.id)) : store.nextId() };
+      for (const [col, ref] of Object.entries(REFS)) {
+        if (!(col in row) || row[col] == null || row[col] === 0) continue;
+        row[col] = idMap[ref]?.get(Number(row[col])) ?? null;
+      }
+      store.put(t, row); n++;
+    }
+  }
+  if (parsed.currency && mode === 'replace') store.setPref('base_currency', parsed.currency);
+  return n;
+}
+
+initSchemaKeys(SCHEMA);

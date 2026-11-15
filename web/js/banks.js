@@ -1,0 +1,25 @@
+// BankAppLauncher.kt equivalents: same package ids (synced field accounts.linked_app_package),
+// mapped to each provider's official website because browsers can't launch Android apps.
+export const BANKS = [
+  ['com.maribank.ph', 'MariBank', 'https://www.maribank.com.ph', ['com.maribank.sg', 'com.maribank.id', 'ph.com.maribank']],
+  ['com.globe.gcash.android', 'GCash', 'https://www.gcash.com', ['ph.com.gcash', 'com.gcash']],
+  ['com.voyagerinnovation.paymaya', 'Maya', 'https://www.maya.ph', ['com.paymaya', 'ph.com.paymaya']],
+  ['ph.com.seabank.mobile', 'SeaBank', 'https://www.seabank.ph', ['com.seabank.ph', 'id.co.seabank']],
+  ['com.bdo.pay', 'BDO', 'https://online.bdo.com.ph', ['com.bdo.online', 'ph.com.bdo']],
+  ['com.bpi.ng.app', 'BPI', 'https://online.bpi.com.ph', ['com.bpi.mobile', 'ph.com.bpi']],
+  ['com.unionbankph.online', 'UnionBank', 'https://online.unionbankph.com', ['ph.com.unionbank']],
+  ['ph.gotyme.app', 'GoTyme', 'https://www.gotyme.com.ph', ['com.gotyme']],
+  ['com.tonik.mobile', 'Tonik', 'https://tonikbank.com', []],
+  ['com.shopee.ph', 'ShopeePay', 'https://shopee.ph', ['com.shopee.id', 'com.shopee.my', 'com.shopee.sg']],
+  ['com.grabtaxi.passenger', 'GrabPay', 'https://www.grab.com/ph/', []],
+  ['com.paypal.android.p2pmobile', 'PayPal', 'https://www.paypal.com', []],
+  ['com.revolut.revolut', 'Revolut', 'https://app.revolut.com', []],
+  ['com.transferwise.android', 'Wise', 'https://wise.com', []],
+  ['com.squareup.cash', 'Cash App', 'https://cash.app', []],
+  ['com.venmo', 'Venmo', 'https://venmo.com', []],
+  ['com.cimb.cimbph', 'CIMB Bank PH', 'https://www.cimbbank.com.ph', ['com.cimb.cimbclicks']],
+  ['ph.com.eastwestbank.komo', 'EastWest / Komo', 'https://www.komo.ph', ['com.eastwest.mobile']],
+  ['com.rcbc.pulz', 'RCBC', 'https://www.rcbc.com', ['com.diskartech']],
+  ['com.metrobank.mobile', 'Metrobank', 'https://online.metrobank.com.ph', ['ph.com.metrobank.mbapp']],
+];
+export const bankFor = (pkg) => (pkg ? BANKS.find((b) => b[0] === pkg || b[3].includes(pkg)) : null);

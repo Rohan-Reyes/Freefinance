@@ -193,6 +193,13 @@ class Store {
     this.changed();
     return row;
   }
+  /** Writes a full row with a given id (used by undo to restore exactly what was there). */
+  put(tbl, row) {
+    this.tables[tbl].set(row.id, { ...SCHEMA[tbl](), ...row });
+    this.queue(tbl, row.id);
+    this.changed();
+    return row;
+  }
   remove(tbl, id) {
     id = Number(id);
     if (!this.tables[tbl].has(id)) return;

@@ -21,6 +21,8 @@ const HOST = process.env.FF_HOST || '127.0.0.1';
 const DATA_DIR = process.env.FF_DATA_DIR || path.join(__dirname, 'data');
 const WEB_DIR = process.env.FF_WEB_DIR || path.join(__dirname, '..', 'web');
 const MAX_BODY = 25 * 1024 * 1024;
+const MAX_FILE = 15 * 1024 * 1024;
+const FILES_DIR = path.join(DATA_DIR, 'files');
 const PULL_LIMIT = 2000;
 const DEVICE_SPAN = 2 ** 40;
 const MAX_DEVICES = 8191; // keeps global ids below 2^53 (JS safe integers)
@@ -33,6 +35,7 @@ const TABLES = new Set([
 ]);
 
 fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+fs.mkdirSync(FILES_DIR, { recursive: true, mode: 0o700 });
 const db = new DatabaseSync(path.join(DATA_DIR, 'freefinance.db'));
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -174,6 +177,23 @@ function validChange(c) {
     (c.deleted ? true : (c.data && typeof c.data === 'object' && !Array.isArray(c.data)));
 }
 
+function imageType(b) {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (b.length >= 12 && b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (b.length >= 6 && b.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif';
+  if (b.length >= 12 && b.subarray(4, 8).toString('latin1') === 'ftyp' && /hei|mif|avif/.test(b.subarray(8, 12).toString('latin1'))) return 'image/heic';
+  return null;
+}
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new HttpError(413, 'Image too large (max 15 MB)')); req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 // ---------- API ----------
 async function api(req, res, url) {
   const p = url.pathname;
@@ -253,6 +273,27 @@ async function api(req, res, url) {
       db.exec('COMMIT');
     } catch (e) { db.exec('ROLLBACK'); seqCounter = q.maxSeq.get().m; throw e; }
     return send(res, 200, { applied, rejected, invalid, cursor: seqCounter, serverTime: Date.now() });
+  }
+
+  // ---- photo store (receipts / transaction proofs), content-addressed by SHA-256 ----
+  const fm = /^\/api\/files\/([a-f0-9]{64})$/.exec(p);
+  if (fm) {
+    const file = path.join(FILES_DIR, fm[1]);
+    if (req.method === 'HEAD' || req.method === 'GET') {
+      if (!fs.existsSync(file)) { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end(); }
+      const head = Buffer.alloc(12); const fd = fs.openSync(file, 'r'); fs.readSync(fd, head, 0, 12, 0); fs.closeSync(fd);
+      res.writeHead(200, { 'Content-Type': imageType(head) || 'application/octet-stream', 'Content-Length': fs.statSync(file).size,
+        'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+      if (req.method === 'HEAD') return res.end();
+      return fs.createReadStream(file).pipe(res);
+    }
+    if (req.method === 'PUT') {
+      const body = await readRaw(req, MAX_FILE);
+      if (!imageType(body)) throw new HttpError(415, 'Only JPEG, PNG, WebP, GIF or HEIC images are accepted');
+      if (sha256(body) !== fm[1]) throw new HttpError(400, 'Content does not match its SHA-256 name');
+      if (!fs.existsSync(file)) { fs.writeFileSync(file + '.tmp', body, { mode: 0o600 }); fs.renameSync(file + '.tmp', file); }
+      return send(res, 200, { ok: true, size: body.length });
+    }
   }
 
   if (p === '/api/devices' && req.method === 'GET') {

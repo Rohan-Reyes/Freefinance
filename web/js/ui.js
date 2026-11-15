@@ -27,13 +27,58 @@ export const argbToCss = (c) => '#' + ((Number(c) >>> 0) & 0xffffff).toString(16
 export const cssToArgb = (hex) => (0xff000000 | parseInt(String(hex).replace('#', ''), 16)) | 0;
 
 // ---- toast ----
-export function toast(msg, kind = 'ok') {
+export function toast(msg, kind = 'ok', { action, onAction, ms = 2600 } = {}) {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-act'; b.textContent = action;
+    b.addEventListener('click', () => { el.remove(); onAction(); });
+    el.appendChild(b); el.style.pointerEvents = 'auto'; ms = Math.max(ms, 6000);
+  }
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.classList.add('out'), 2600);
-  setTimeout(() => el.remove(), 3100);
+  setTimeout(() => el.classList.add('out'), ms);
+  setTimeout(() => el.remove(), ms + 500);
+}
+
+// ---- undo (DashboardViewModel.lastUndoableAction) ----
+export const undo = {
+  action: null,          // { label, run }
+  set(label, run) { this.action = { label, run }; toast(label, 'ok', { action: 'Undo', onAction: () => this.perform() }); },
+  perform() { const a = this.action; if (!a) return; this.action = null; a.run(); toast('Undone'); },
+};
+
+// ---- success celebration (TransactionSuccessAnimationOverlay) ----
+export function celebrate(title, amountText, kind = 'pos') {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const el = document.createElement('div');
+  el.className = 'celebrate';
+  el.innerHTML = `<div class="cel-box ${kind}"><div class="cel-check">✓</div><strong>${esc(amountText)}</strong><span>${esc(title)}</span></div>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add('out'), 1100);
+  setTimeout(() => el.remove(), 1500);
+}
+
+// ---- theme palettes & hero styles (AppThemePreset / HeroBackgroundStyle) ----
+export const PALETTES = [
+  ['EMERALD_AURORA', 'Emerald Aurora', 'Lush emerald fintech greens, mint & teal', 'EMERALD_AURORA'],
+  ['OCEAN_INDIGO', 'Ocean Indigo', 'Royal sapphire, electric blue & deep navy', 'GRADIENT'],
+  ['SUNSET_GLOW', 'Sunset Glow', 'Vibrant crimson, radiant coral & warm amber', 'SUNSET_GLOW'],
+  ['MIDNIGHT_NEBULA', 'Midnight Nebula', 'Cosmic purple, electric violet & dark plum', 'MIDNIGHT_NEBULA'],
+  ['GOLDEN_LUXE', 'Golden Luxe', 'Warm amber, champagne gold & rich bronze', 'GOLDEN_LUXE'],
+  ['CYBERPUNK_NEON', 'Cyberpunk Neon', 'High-contrast neon cyan, magenta & carbon', 'GRADIENT'],
+  ['TITANIUM_SLATE', 'Titanium Slate', 'Minimalist graphite, steel & slate', 'SOLID'],
+];
+export const HERO_STYLES = [
+  ['EMERALD_AURORA', 'Emerald Aurora'], ['GRADIENT', 'Ocean Indigo'], ['SUNSET_GLOW', 'Sunset Glow'],
+  ['MIDNIGHT_NEBULA', 'Midnight Nebula'], ['GOLDEN_LUXE', 'Golden Luxe'], ['SOLID', 'Theme Solid'],
+];
+export function applyTheme() {
+  const d = document.documentElement;
+  d.dataset.theme = viewPrefs.get('theme', 'system');
+  d.dataset.palette = viewPrefs.get('palette', 'EMERALD_AURORA');
+  d.dataset.hero = viewPrefs.get('hero', 'EMERALD_AURORA');
 }
 
 // ---- modal ----
@@ -92,6 +137,13 @@ export function formHTML(fields, values = {}) {
         input = `<select id="${id}" name="${f.key}" ${req}>${(f.options || []).map(([ov, ol]) =>
           `<option value="${esc(ov)}" ${String(ov) === String(v ?? '') ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
         break;
+      case 'weekdays': {
+        const sel = new Set((v || []).map((d) => String(d).toUpperCase()));
+        return `<div class="field ${f.half ? 'half' : ''}" data-field="${f.key}"><span>${esc(f.label)}</span><div class="daypick">${['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map((d) =>
+          `<label><input type="checkbox" name="${f.key}" value="${d}" ${sel.has(d) ? 'checked' : ''}><span>${d.slice(0, 2)}</span></label>`).join('')}</div></div>`;
+      }
+      case 'time':
+        input = `<input id="${id}" type="time" name="${f.key}" value="${esc(v ?? '')}">`; break;
       case 'checkbox':
         return `<label class="check ${f.half ? 'half' : ''}"><input type="checkbox" name="${f.key}" ${v ? 'checked' : ''}> ${esc(f.label)}</label>`;
       case 'textarea':
@@ -118,7 +170,8 @@ export function readForm(wrap, fields) {
     const el = form.elements[f.key];
     if (!el) continue;
     let v;
-    if (f.type === 'checkbox') v = el.checked ? 1 : 0;
+    if (f.type === 'weekdays') v = [...form.querySelectorAll(`input[name="${f.key}"]:checked`)].map((x) => x.value);
+    else if (f.type === 'checkbox') v = el.checked ? 1 : 0;
     else if (f.type === 'number' || f.type === 'money') v = el.value === '' ? null : Number(el.value);
     else if (f.type === 'date' || f.type === 'datetime') v = fromInputDate(el.value);
     else if (f.type === 'color') v = cssToArgb(el.value);
@@ -172,5 +225,8 @@ export function donut(items, { size = 150 } = {}) {
   }).join('');
   return `<svg width="${size}" height="${size}" viewBox="0 0 140 140" class="donut"><g transform="rotate(-90 70 70)">${segs}</g></svg>`;
 }
-export const progressBar = (ratio, warn = 0.8) =>
-  `<div class="progress ${ratio >= 1 ? 'over' : ratio >= warn ? 'warn' : ''}"><i style="width:${Math.min(100, Math.max(0, ratio * 100))}%"></i></div>`;
+// Spending bars: fuller = worse. With { good: true } (scores, repayments): fuller = better.
+export const progressBar = (ratio, warn = 0.8, { good = false, neutral = false } = {}) => {
+  const cls = neutral ? '' : good ? (ratio >= 0.7 ? 'good' : ratio >= 0.4 ? 'warn' : 'over') : ratio >= 1 ? 'over' : ratio >= warn ? 'warn' : '';
+  return `<div class="progress ${cls}"><i style="width:${Math.min(100, Math.max(0, ratio * 100))}%"></i></div>`;
+};
