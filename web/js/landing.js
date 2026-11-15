@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
 // Local-first Android app, optional self-hosted cloud sync + this web app.
-import { api } from './store.js?v=7';
-import { esc } from './ui.js?v=7';
+import { api } from './store.js?v=8';
+import { esc } from './ui.js?v=8';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
