@@ -1,6 +1,13 @@
 // Brand-styled looks for Philippine banks / e-wallets (mirrors app/.../ui/brand/Brands.kt).
 // Drawn styles in each issuer's colours with its name as a wordmark — not official logo artwork.
 import { esc } from './ui.js';
+import { store } from './store.js';
+
+/** sha256 of the real app icon the phone uploaded for this brand (see ServerSyncManager.refreshBankLogos). */
+export function logoSha(b) {
+  if (!b) return null;
+  try { const m = JSON.parse(store.prefs?.bank_logos || '{}'); return /^[a-f0-9]{64}$/.test(m[b.id] || '') ? m[b.id] : null; } catch { return null; }
+}
 
 const B = (id, name, wordmark, mono, colors, accent, keywords, extra = {}) => ({ id, name, wordmark, mono, colors, accent, keywords, ink: '#FFFFFF', ...extra });
 export const BRANDS = [
@@ -42,8 +49,11 @@ export function detectBrand(...names) {
 }
 
 /** Small rounded-square mark (gradient + monogram) for account rows. */
-export const brandMark = (b, size = 36) =>
-  `<span class="brand-mark" style="width:${size}px;height:${size}px;background:linear-gradient(135deg,${b.colors.join(',')});color:${b.ink};font-size:${Math.round(size * (b.mono.length > 1 ? 0.36 : 0.48))}px">${esc(b.mono)}</span>`;
+export const brandMark = (b, size = 36) => {
+  const sha = logoSha(b);
+  const drawn = `<span class="brand-mark" style="width:${size}px;height:${size}px;background:linear-gradient(135deg,${b.colors.join(',')});color:${b.ink};font-size:${Math.round(size * (b.mono.length > 1 ? 0.36 : 0.48))}px">${esc(b.mono)}</span>`;
+  return sha ? `<img class="brand-logo" data-sha="${sha}" data-fallback="${esc(drawn)}" alt="${esc(b.name)}" width="${size}" height="${size}">` : drawn;
+};
 
 /** Card network symbol as inline SVG / text. */
 export function networkMark(net) {

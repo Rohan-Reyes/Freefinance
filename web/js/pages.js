@@ -4,7 +4,7 @@ import * as L from './logic.js';
 import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js';
 import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js';
 import { BANKS, bankFor } from './banks.js';
-import { detectBrand, brandMark, networkMark } from './brands.js';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
@@ -704,7 +704,8 @@ const cards = {
       <div class="cards-grid">${list.length ? list.map((c) => {
         const [c1, c2] = FINISH[c.card_finish] || FINISH.OBSIDIAN_GOLD, show = revealed.has(c.id), digits = String(c.card_number || '').replace(/\D/g, '');
         const brand = detectBrand(c.issuing_bank, c.card_name), bg = brand ? `linear-gradient(135deg,${brand.colors.join(',')})` : `linear-gradient(135deg,${c1},${c2})`;
-        const title = brand ? `<span class="pc-word" style="color:${brand.ink}">${esc(brand.wordmark)}</span>` : `<span class="pc-word">${esc(c.issuing_bank || c.card_name)}</span>`;
+        const sha = logoSha(brand);
+        const title = brand ? `<span class="pc-brand">${sha ? `<img class="brand-logo" data-sha="${sha}" alt="" width="34" height="34">` : ''}<span class="pc-word" style="color:${brand.ink}">${esc(brand.wordmark)}</span></span>` : `<span class="pc-word">${esc(c.issuing_bank || c.card_name)}</span>`;
         const num = show && digits ? digits.match(/.{1,4}/g).join('  ') : `••••  ••••  ••••  ${L.lastFour(c)}`;
         const util = c.credit_limit > 0 ? c.current_credit_used / c.credit_limit : 0;
         return `<div class="pay-card-wrap"><div class="pay-card ${c.is_frozen ? 'frozen' : ''} ${brand ? 'brand-' + brand.id : ''}" style="background:${bg};${brand ? `color:${brand.ink}` : ''}">

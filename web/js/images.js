@@ -18,7 +18,9 @@ export function photoUrl(sha) {
 export function hydratePhotos(root) {
   root.querySelectorAll('img[data-sha]:not([src])').forEach(async (img) => {
     const url = await photoUrl(img.dataset.sha);
-    if (url) img.src = url; else img.replaceWith(Object.assign(document.createElement('span'), { className: 'photo-missing', textContent: 'Photo unavailable' }));
+    if (url) img.src = url;
+    else if (img.dataset.fallback) img.outerHTML = img.dataset.fallback;
+    else img.replaceWith(Object.assign(document.createElement('span'), { className: 'photo-missing', textContent: 'Photo unavailable' }));
   });
 }
 

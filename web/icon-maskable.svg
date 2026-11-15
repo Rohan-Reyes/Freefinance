@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <!-- My Finance app icon (same artwork as res/drawable/ic_launcher_*.xml). Full bleed for maskable use. -->
+  <!-- My Finance app icon in ATEN colours (same artwork as res/drawable/ic_launcher_*.xml). -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#127A63"/><stop offset="0.55" stop-color="#0C4E4A"/><stop offset="1" stop-color="#082C33"/>
+      <stop offset="0" stop-color="#1A4D9C"/><stop offset="0.5" stop-color="#0D2A5C"/><stop offset="1" stop-color="#07111F"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.28" cy="0.22" r="0.7">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0.28" cy="0.2" r="0.7">
+      <stop offset="0" stop-color="#4D90E8" stop-opacity="0.35"/><stop offset="1" stop-color="#4D90E8" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="108" height="108" fill="url(#bg)"/>
   <rect width="108" height="108" fill="url(#glow)"/>
-  <rect x="33" y="60" width="11" height="18" rx="5.5" fill="#FFFFFF" fill-opacity="0.7"/>
-  <rect x="48.5" y="52" width="11" height="26" rx="5.5" fill="#FFFFFF" fill-opacity="0.86"/>
+  <rect x="33" y="60" width="11" height="18" rx="5.5" fill="#EEF2FB" fill-opacity="0.6"/>
+  <rect x="48.5" y="52" width="11" height="26" rx="5.5" fill="#EEF2FB" fill-opacity="0.82"/>
   <rect x="64" y="44" width="11" height="34" rx="5.5" fill="#FFFFFF"/>
-  <path d="M31,50 L46,41 L56,45 L73,31" fill="none" stroke="#7CF2C4" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M65,30 L75,29.2 L74.2,39.2 Z" fill="#7CF2C4" stroke="#7CF2C4" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M31,50 L46,41 L56,45 L73,31" fill="none" stroke="#F5A020" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M65,30 L75,29.2 L74.2,39.2 Z" fill="#F5A020" stroke="#F5A020" stroke-width="1.5" stroke-linejoin="round"/>
 </svg>

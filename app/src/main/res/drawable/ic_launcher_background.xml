@@ -2,13 +2,13 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Emerald to deep teal -->
+    <!-- ATEN logo blue to navy -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="108" android:endY="108">
-                <item android:offset="0.0" android:color="#FF127A63" />
-                <item android:offset="0.55" android:color="#FF0C4E4A" />
-                <item android:offset="1.0" android:color="#FF082C33" />
+                <item android:offset="0.0" android:color="#FF1A4D9C" />
+                <item android:offset="0.55" android:color="#FF0D2A5C" />
+                <item android:offset="1.0" android:color="#FF07111F" />
             </gradient>
         </aapt:attr>
     </path>
@@ -16,8 +16,8 @@
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="radial" android:centerX="30" android:centerY="24" android:gradientRadius="76">
-                <item android:offset="0.0" android:color="#29FFFFFF" />
-                <item android:offset="1.0" android:color="#00FFFFFF" />
+                <item android:offset="0.0" android:color="#594D90E8" />
+                <item android:offset="1.0" android:color="#004D90E8" />
             </gradient>
         </aapt:attr>
     </path>

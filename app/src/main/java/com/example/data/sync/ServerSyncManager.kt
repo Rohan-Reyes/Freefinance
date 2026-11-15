@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.os.Build
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.room.InvalidationTracker
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteStatement
@@ -95,7 +96,10 @@ class ServerSyncManager private constructor(context: Context) {
         private const val PREF_THEME_PRESET = "app_theme_preset"
         private const val PREF_THEME_MODE = "app_theme_mode"
         private const val PREF_HERO_STYLE = "hero_background_style"
-        private val SYNCED_PREF_KEYS = listOf(PREF_CURRENCY, PREF_THEME_PRESET, PREF_THEME_MODE, PREF_HERO_STYLE)
+        /** JSON text { brandId: sha256 } of bank/e-wallet app icons uploaded from this phone, for the web app. */
+        private const val PREF_LOGOS = "bank_logos"
+        private const val LOGO_REFRESH_MS = 6 * 60 * 60 * 1000L
+        private val SYNCED_PREF_KEYS = listOf(PREF_CURRENCY, PREF_THEME_PRESET, PREF_THEME_MODE, PREF_HERO_STYLE, PREF_LOGOS)
 
         /** Synced Room tables and the columns in each that hold row ids of other synced rows. */
         private val SYNCED_TABLES: Map<String, List<String>> = linkedMapOf(
@@ -333,6 +337,7 @@ class ServerSyncManager private constructor(context: Context) {
     private suspend fun push() {
         val base = serverUrl()
         val token = token() ?: throw ServerSyncException("Not signed in", 401)
+        try { refreshBankLogos(base, token) } catch (_: Exception) { /* logos are best effort */ }
         pushPrefsIfChanged(base, token)
         var guard = 0
         while (guard++ < 500) {
@@ -403,6 +408,56 @@ class ServerSyncManager private constructor(context: Context) {
         .put(PREF_THEME_PRESET, userPrefs.appThemePreset.first().name)
         .put(PREF_THEME_MODE, userPrefs.appThemeMode.first().name)
         .put(PREF_HERO_STYLE, userPrefs.heroBackgroundStyle.first().name)
+        .put(PREF_LOGOS, sp.getString("bank_logos_json", "{}"))
+
+    /**
+     * The web app can't see which apps are installed on the phone, so the phone uploads the real
+     * launcher icons of the banks / e-wallets used in accounts and cards (as content-addressed files,
+     * like receipt photos) and shares a brandId -> sha256 map through the synced prefs.
+     * Recomputed when account/card names change, at most every 6 hours otherwise.
+     */
+    private fun refreshBankLogos(base: String, token: String) {
+        val db = database.openHelper.readableDatabase
+        val names = LinkedHashSet<String>()
+        val linkedPackage = HashMap<String, String>() // account name -> app package chosen for it in the app
+        try {
+            db.query("SELECT name, linked_app_package FROM accounts").use { c ->
+                while (c.moveToNext()) {
+                    val n = c.getString(0).orEmpty()
+                    names += n
+                    c.getString(1)?.takeIf { it.isNotBlank() }?.let { linkedPackage[n] = it }
+                }
+            }
+        } catch (_: Exception) { }
+        try {
+            db.query("SELECT issuing_bank, card_name FROM payment_cards").use { c ->
+                while (c.moveToNext()) { names += c.getString(0).orEmpty(); names += c.getString(1).orEmpty() }
+            }
+        } catch (_: Exception) { }
+        val key = names.filter { it.isNotBlank() }.sorted().joinToString("|") + "#" + linkedPackage.toSortedMap()
+        val fresh = System.currentTimeMillis() - sp.getLong("bank_logos_at", 0L) < LOGO_REFRESH_MS
+        if (key == sp.getString("bank_logos_key", null) && fresh) return
+        val map = JSONObject()
+        val dir = File(appContext.cacheDir, "bank_logos").apply { mkdirs() }
+        for (name in names) {
+            val brand = com.example.ui.brand.Brands.detect(name) ?: continue
+            if (map.has(brand.id)) continue
+            val bmp = com.example.ui.brand.AppLogos.load(appContext, name, linkedPackage[name]) ?: continue
+            val file = File(dir, "${brand.id}.png")
+            try {
+                file.outputStream().use { bmp.asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                val hash = sha256Hex(file)
+                ensureUploaded(base, token, hash, file)
+                map.put(brand.id, hash)
+            } catch (e: ServerSyncException) {
+                if (e.code == 0) throw e // network: try again next sync
+            } catch (_: Exception) {
+                // a bad icon never blocks sync
+            }
+        }
+        sp.edit().putString("bank_logos_json", map.toString()).putString("bank_logos_key", key)
+            .putLong("bank_logos_at", System.currentTimeMillis()).apply()
+    }
 
     /** Pushes the synced settings when they differ from what the server last had. */
     private suspend fun pushPrefsIfChanged(base: String, token: String) {
