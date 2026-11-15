@@ -75,11 +75,13 @@ class MainActivity : FragmentActivity() {
   override fun onPause() {
     super.onPause()
     dashboardViewModel.onAppBackgrounded()
+    com.example.data.sync.ServerSyncManager.get(applicationContext).onAppBackground()
   }
 
   override fun onResume() {
     super.onResume()
     dashboardViewModel.onAppResumed()
+    com.example.data.sync.ServerSyncManager.get(applicationContext).onAppForeground()
     com.example.ui.widget.FinanceAppWidgetManager.updateAllWidgets(applicationContext)
   }
 

@@ -16,3 +16,6 @@
 local.properties
 .env
 debug.keystore
+
+# FreeFinance sync server data (database, setup code)
+server/data/

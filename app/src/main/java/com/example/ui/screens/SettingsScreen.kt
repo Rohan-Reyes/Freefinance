@@ -1081,6 +1081,11 @@ fun SettingsScreen(
                     )
                 }
 
+                // Server sync (FreeFinance sync server / web app)
+                item(key = "CARD_SERVER_SYNC") {
+                    com.example.ui.components.ServerSyncCard()
+                }
+
                 // Balance Integrity & Calibration Card
                 item(key = "CARD_BALANCE_INTEGRITY") {
                     val negativeAccountsCount = uiState.accounts.count { it.currentBalance < 0.0 }
