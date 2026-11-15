@@ -6,6 +6,8 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_budget_burn"
+    android:previewLayout="@layout/widget_budget_burn"
+    android:previewImage="@drawable/widget_logo"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/app_name" />

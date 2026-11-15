@@ -6,6 +6,8 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_monthly_trends"
+    android:previewLayout="@layout/widget_monthly_trends"
+    android:previewImage="@drawable/widget_logo"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/app_name" />
