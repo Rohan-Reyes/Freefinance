@@ -450,11 +450,14 @@ function serveStatic(req, res, url) {
   if (!file.startsWith(WEB_DIR + path.sep)) { res.writeHead(403); return res.end(); }
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) file = path.join(WEB_DIR, 'index.html'); // SPA fallback
   const ext = path.extname(file);
-  res.writeHead(200, {
-    'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': ext === '.html' || file.endsWith('sw.js') ? 'no-cache' : 'public, max-age=300',
-    ...SECURITY_HEADERS,
-  });
+  // Always revalidate (cheap 304s via ETag) so a deploy reaches browsers immediately, even behind
+  // Cloudflare, which otherwise stretches short max-age values to hours.
+  const st = fs.statSync(file);
+  const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+  const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag, ...SECURITY_HEADERS };
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+  res.writeHead(200, headers);
+  if (req.method === 'HEAD') return res.end();
   fs.createReadStream(file).pipe(res);
 }
 
