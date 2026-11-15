@@ -923,7 +923,7 @@ const settings = {
         <p class="muted">Used to convert accounts into ${esc(L.base())}. Without a rate, built-in reference rates are used.</p>
         <div class="list">${rates.length ? rates.map((r) => `<div class="mini-row"><span>1 ${esc(r.from_currency)} = <strong>${r.rate}</strong> ${esc(r.to_currency)} <small class="muted">updated ${fmtDate(r.last_updated)}</small></span>
           <span class="row-actions"><button class="icon-btn" data-action="editRate" data-id="${r.id}">✎</button><button class="icon-btn" data-action="delRate" data-id="${r.id}">🗑</button></span></div>`).join('') : empty('No custom rates')}</div></div>
-      <div class="card"><h3>Devices</h3><div class="list">${devicesCache ? devicesCache.devices.map((d) => `<div class="mini-row"><span>${d.kind === 'android' ? '📱' : d.kind === 'web' ? '🖥' : '🔌'} ${esc(d.name || 'Device')} #${d.device_no}${d.device_no === devicesCache.current ? ' <small class="badge">this one</small>' : ''}<br>
+      <div class="card"><h3>Devices</h3><div class="list">${devicesCache ? devicesCache.devices.map((d) => `<div class="mini-row"><span>${esc(d.name || 'Device')} #${d.device_no}${d.device_no === devicesCache.current ? ' <small class="badge">this one</small>' : ''}<br>
         <small class="muted">${d.revoked ? 'Signed out' : 'Last seen ' + fmtDateTime(d.last_seen)}</small></span>${!d.revoked && d.device_no !== devicesCache.current ? `<button class="btn small ghost danger" data-action="revoke" data-id="${d.device_no}">Sign out</button>` : ''}</div>`).join('') : '<p class="muted">Loading…</p>'}</div></div>
       <div class="card"><h3>Security & data</h3>
         <div class="row"><button class="btn" data-action="changePassword">Change password</button><button class="btn" data-action="exportJson">Export JSON</button><button class="btn" data-action="exportCsv">Export CSV</button><label class="btn">Import JSON…<input type="file" accept=".json,application/json" data-action-change="importFile" hidden></label></div>
@@ -1042,23 +1042,29 @@ const about = {
 const getApp = {
   title: 'Get the app',
   render() {
+    if (!serverInfo) settings.loadServerInfo();
+    const app = serverInfo?.app;
     return `<div class="page-head"><h1>Get the app</h1></div>
     <div class="grid">
-      <div class="card"><h3>📱 Android app</h3><p class="muted">Download the latest APK from GitHub Releases, or build it from source with <code>./gradlew assembleDebug</code>.</p>
-        <div class="row"><a class="btn primary" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">Releases ↗</a><a class="btn" href="${REPO}" target="_blank" rel="noopener noreferrer">Source ↗</a></div>
-        <p class="muted">Then open <strong>Settings → Data Vault, Sync & Integrity → Server Sync</strong> and sign in with this account.</p></div>
-      <div class="card"><h3>🖥 Install this web app</h3><p class="muted">Add My Finance to your home screen or desktop — it opens in its own window and works offline (the web equivalent of the phone's home-screen widgets & quick actions).</p>
-        ${installPrompt ? '<button class="btn primary" data-action="install">Install app</button>' : '<p class="muted">In your browser menu choose <strong>Install app</strong> / <strong>Add to Home Screen</strong>.</p>'}</div>
-      <div class="card span2"><h3>Backups</h3><p class="muted">The phone app's Google Drive vault isn't available on the web. Your data is already kept on your sync server, and you can export a full JSON backup or a spreadsheet-ready CSV any time.</p>
-        <a class="btn" href="#/settings">Open export & import</a></div>
+      <div class="card"><h3>Android app</h3>
+        ${app ? `<p>Version ${esc(app.versionName || '—')} · ${(app.size / 1048576).toFixed(1)} MB · Android ${esc(app.minAndroid || '7.0')}+</p>
+          <p class="muted">Download it on your phone and open the file. To update, download again and install over the current app; your data stays.</p>
+          <div class="row"><a class="btn primary" href="${esc(app.url)}" download>Download APK</a></div>` : '<p class="muted">No APK has been uploaded to this server yet.</p>'}
+        <p class="muted">Then open <strong>Settings → Data &amp; sync → Server sync</strong> in the app and sign in with this account.</p></div>
+      <div class="card"><h3>Install this web app</h3><p class="muted">Add My Finance to your home screen or desktop. It opens in its own window and works offline.</p>
+        ${installPrompt ? '<button class="btn primary" data-action="install">Install app</button>' : '<p class="muted">In your browser menu choose <strong>Install app</strong> or <strong>Add to Home Screen</strong>.</p>'}</div>
+      <div class="card span2"><h3>Backups</h3><p class="muted">Your data is kept on your sync server. You can also export a full JSON backup (with photos and settings) or a CSV any time.</p>
+        <a class="btn" href="#/settings">Open export &amp; import</a></div>
     </div>`;
   },
   actions: { install: async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; store.emit(); } },
 };
 
 export const PAGES = { dashboard, customize, about, 'get-app': getApp, accounts, account: accountDetail, records, categories, budgets, debts, subscriptions, commissions, assets, cards, analytics, receipts, settings };
+const NAV_PATHS = {"dashboard": `<path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/>`, "accounts": `<path d="M4 10h3v7H4zm6.5 0h3v7h-3zM2 19h20v3H2zm15-9h3v7h-3zM12 1 2 6v2h20V6z"/>`, "records": `<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>`, "budgets": `<path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99z"/>`, "subscriptions": `<path d="M12 4V1L8 5l4 4V6a6 6 0 0 1 5.65 8.03l1.46 1.46A8 8 0 0 0 12 4zm-5.65 5.97L4.89 8.51A8 8 0 0 0 12 20v3l4-4-4-4v3a6 6 0 0 1-5.65-8.03z"/>`, "debts": `<path d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>`, "commissions": `<path d="M10 16v-1H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4h-7v1zm10-9h-4V5l-2-2h-4L8 5v2H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h6v-2h4v2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zm-6 0h-4V5h4z"/>`, "assets": `<path d="M20 2H4a2 2 0 0 0-2 2v3.01c0 .72.43 1.34 1 1.69V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.7c.57-.35 1-.97 1-1.69V4a2 2 0 0 0-2-2zm-5 12H9v-2h6zm5-7H4V4h16z"/>`, "cards": `<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H4v-6h16zm0-10H4V6h16z"/>`, "analytics": `<path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>`, "receipts": `<path d="M18 17H6v-2h12zm0-4H6v-2h12zm0-4H6V7h12zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2z"/>`, "categories": `<path d="M12 2l-5.5 9h11zm5.5 11a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM3 21.5h8v-8H3z"/>`, "settings": `<path d="M19.14 12.94a7.4 7.4 0 0 0 0-1.88l2.03-1.58a.48.48 0 0 0 .12-.61l-1.92-3.32a.48.48 0 0 0-.59-.21l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.21L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a7.4 7.4 0 0 0 0 1.88l-2.03 1.58a.48.48 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.21l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7.4 7.4 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.21l1.92-3.32a.48.48 0 0 0-.12-.61zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>`, "get-app": `<path d="M19 9h-4V3H9v6H5l7 7zM5 18v2h14v-2z"/>`, "about": `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/>`};
+const NAV_ICON = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${NAV_PATHS[k]}</svg>`;
 export const NAV = [
-  ['dashboard', '◧', 'Dashboard'], ['accounts', '🏦', 'Accounts'], ['records', '☰', 'Records'], ['budgets', '◔', 'Budgets'],
-  ['subscriptions', '↻', 'Subscriptions'], ['debts', '⇆', 'Debts'], ['commissions', '💼', 'Commissions'], ['assets', '💎', 'Assets'],
-  ['cards', '💳', 'Cards'], ['analytics', '📊', 'Analytics'], ['receipts', '🧾', 'Receipts'], ['categories', '🏷', 'Categories'], ['settings', '⚙', 'Settings'], ['get-app', '📲', 'Get the app'], ['about', 'ℹ', 'About & support'],
+  ['dashboard', NAV_ICON('dashboard'), 'Dashboard'], ['accounts', NAV_ICON('accounts'), 'Accounts'], ['records', NAV_ICON('records'), 'Records'], ['budgets', NAV_ICON('budgets'), 'Budgets'],
+  ['subscriptions', NAV_ICON('subscriptions'), 'Subscriptions'], ['debts', NAV_ICON('debts'), 'Debts'], ['commissions', NAV_ICON('commissions'), 'Commissions'], ['assets', NAV_ICON('assets'), 'Assets'],
+  ['cards', NAV_ICON('cards'), 'Cards'], ['analytics', NAV_ICON('analytics'), 'Analytics'], ['receipts', NAV_ICON('receipts'), 'Receipts'], ['categories', NAV_ICON('categories'), 'Categories'], ['settings', NAV_ICON('settings'), 'Settings'], ['get-app', NAV_ICON('get-app'), 'Get the app'], ['about', NAV_ICON('about'), 'About & support'],
 ];
