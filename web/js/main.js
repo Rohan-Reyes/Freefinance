@@ -3,45 +3,20 @@ import { PAGES, NAV } from './pages.js';
 import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js';
 import { lock, showLockScreen } from './security.js';
 import { hydratePhotos, viewPhoto } from './images.js';
+import { renderLanding } from './landing.js';
 
 const app = document.getElementById('app');
 applyTheme();
 
 // ---------------------------------------------------------------- auth screens
 async function authScreen() {
-  let status = { needsSetup: false };
-  try { status = await api('/api/status'); } catch (e) { /* offline: still show login */ }
-  const setup = status.needsSetup;
-  app.innerHTML = `<div class="auth">
-    <form class="auth-card" novalidate>
-      <div class="brand big"><span class="logo">₱</span><div><strong>My Finance</strong><small>Web · synced with your phone</small></div></div>
-      <h1>${setup ? 'Create your account' : 'Sign in'}</h1>
-      <p class="muted">${setup ? 'First-time setup. Enter the one-time setup code from your server (file <code>server/data/SETUP_CODE.txt</code>).' : 'Use the same account as the Android app\'s Server Sync.'}</p>
-      ${setup ? '<label class="field"><span>Setup code</span><input name="setupCode" autocomplete="one-time-code" required placeholder="XXXX-XXXX-XXXX"></label>' : ''}
-      <label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
-      <label class="field"><span>Password${setup ? ' (10+ characters)' : ''}</span><input name="password" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required></label>
-      ${setup ? '<label class="field"><span>Confirm password</span><input name="password2" type="password" autocomplete="new-password" required></label>' : ''}
-      <p class="form-error" hidden></p>
-      <button class="btn primary block" type="submit">${setup ? 'Create account' : 'Sign in'}</button>
-    </form></div>`;
-  const form = app.querySelector('form'), err = app.querySelector('.form-error');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const f = Object.fromEntries(new FormData(form));
-    err.hidden = true;
-    if (setup && f.password !== f.password2) { err.textContent = 'Passwords do not match'; err.hidden = false; return; }
-    const btn = form.querySelector('button'); btn.disabled = true;
-    try {
-      const prev = JSON.parse(localStorage.getItem('ff_last_device') || 'null');
-      const body = { username: f.username, password: f.password, deviceName: browserName(), kind: 'web',
-        ...(prev && prev.username === f.username ? { deviceNo: prev.deviceNo } : {}), ...(setup ? { setupCode: f.setupCode } : {}) };
-      const res = await api(setup ? '/api/setup' : '/api/login', { method: 'POST', body });
+  await renderLanding(app, {
+    browserName,
+    onSignedIn: async (res) => {
       store.setAuth({ token: res.token, deviceNo: res.deviceNo, username: res.username });
       localStorage.setItem('ff_last_device', JSON.stringify({ username: res.username, deviceNo: res.deviceNo }));
       await start();
-    } catch (ex) {
-      err.textContent = ex.message; err.hidden = false; btn.disabled = false;
-    }
+    },
   });
 }
 function browserName() {

@@ -1,22 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- My Finance mark: three rising bars with a trend arrow. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Wallet body -->
-    <path
-        android:fillColor="#00E676"
-        android:pathData="M27,36 C27,32.7 29.7,30 33,30 L75,30 C78.3,30 81,32.7 81,36 L81,42 L33,42 C30.8,42 29,43.8 29,46 C29,48.2 30.8,50 33,50 L81,50 L81,72 C81,75.3 78.3,78 75,78 L33,78 C29.7,78 27,75.3 27,72 Z" />
-    <!-- Wallet flap -->
-    <path
-        android:fillColor="#00B0FF"
-        android:pathData="M63,48 L79,48 C81.2,48 83,49.8 83,52 L83,62 C83,64.2 81.2,66 79,66 L63,66 C60.8,66 59,64.2 59,62 L59,52 C59,49.8 60.8,48 63,48 Z" />
-    <!-- Coin / Clasp inside flap -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M71,57m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
-    <!-- Trending upward indicator spark -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M43,62 L51,54 L47,54 L47,50 L57,50 L57,60 L53,60 L53,56 L45,64 Z" />
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#B3FFFFFF" android:pathData="M38.5,60a5.5,5.5 0,0 1,5.5 5.5v7a5.5,5.5 0,0 1,-11 0v-7a5.5,5.5 0,0 1,5.5 -5.5z" />
+    <path android:fillColor="#DBFFFFFF" android:pathData="M54,52a5.5,5.5 0,0 1,5.5 5.5v15a5.5,5.5 0,0 1,-11 0v-15a5.5,5.5 0,0 1,5.5 -5.5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M69.5,44a5.5,5.5 0,0 1,5.5 5.5v23a5.5,5.5 0,0 1,-11 0v-23a5.5,5.5 0,0 1,5.5 -5.5z" />
+    <path android:strokeColor="#FF7CF2C4" android:strokeWidth="4" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M31,50L46,41L56,45L73,31" />
+    <path android:fillColor="#FF7CF2C4" android:strokeColor="#FF7CF2C4" android:strokeWidth="1.5" android:strokeLineJoin="round" android:pathData="M65,30L75,29.2L74.2,39.2Z" />
 </vector>

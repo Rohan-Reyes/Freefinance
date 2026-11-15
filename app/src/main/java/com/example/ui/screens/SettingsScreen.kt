@@ -1174,10 +1174,12 @@ fun SettingsScreen(
                             onClick = onNavigateToAnalytics
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        com.example.ui.components.AppUpdateRow()
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         SettingsNavigationRow(
                             icon = Icons.Rounded.NewReleases,
                             title = "Release notes",
-                            subtitle = "Version 1.2.0",
+                            subtitle = "What's new in each version",
                             onClick = onNavigateToApkReleases
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

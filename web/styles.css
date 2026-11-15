@@ -48,7 +48,7 @@ code { font-size: .85em; background: var(--surface-3); padding: 1px 5px; border-
 .brand strong { display: block; font-family: var(--display); font-size: 1.05rem; }
 .brand small { color: var(--muted); font-size: .75rem; }
 .logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: transparent; font-weight: 700; font-size: 1.2rem; flex: none;
-  overflow: hidden; background: #0F2027 url('icon.svg') center / cover no-repeat; box-shadow: 0 4px 14px rgba(15, 32, 39, .35); } /* same artwork as the Android launcher icon */
+  overflow: hidden; background: #0C4E4A url('icon.svg') center / cover no-repeat; box-shadow: 0 4px 14px rgba(12, 78, 74, .35); } /* same artwork as the Android launcher icon */
 .brand.big .logo { width: 46px; height: 46px; font-size: 1.5rem; }
 #nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 #nav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); font-weight: 500; font-size: .92rem; }
@@ -386,3 +386,55 @@ a.acc-main:hover strong { color: var(--accent); }
 .about-hero .logo { width: 64px; height: 64px; font-size: 2rem; border-radius: 18px; }
 .about-hero h2 { font-size: 1.4rem; }
 a.icon-btn.launch { display: grid; place-items: center; color: var(--accent); font-weight: 700; }
+
+/* ---------- brand card faces & marks (mirrors the Android app) ---------- */
+.pay-card { aspect-ratio: 1.586; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; }
+.pay-card::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 110% 120%, rgba(255,255,255,.14) 0 38%, transparent 39%), linear-gradient(180deg, rgba(255,255,255,.08), transparent 45%); pointer-events: none; }
+.pc-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.pc-word { font-family: var(--display); font-weight: 800; font-size: 1.35rem; letter-spacing: -.01em; }
+.pc-type { opacity: .75; letter-spacing: .08em; font-size: .7rem; }
+.pc-chip { width: 38px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, #F3DD9B, #C9A04A 60%, #E9CF85); box-shadow: inset 0 0 0 1px rgba(107,82,33,.45); }
+.pc-bot { display: flex; justify-content: space-between; align-items: flex-end; }
+.net-mark { height: 24px; width: auto; font-weight: 800; letter-spacing: .04em; }
+.net-mark.visa { font-family: var(--display); font-style: italic; font-size: 1.35rem; }
+.net-mark.amex { background: #2E77BC; color: #fff; border-radius: 4px; padding: 2px 6px; font-size: .75rem; }
+.brand-mark { display: inline-grid; place-items: center; border-radius: 30%; font-family: var(--display); font-weight: 800; flex: none; }
+
+/* ---------- public landing page ---------- */
+.landing { max-width: 1120px; margin: 0 auto; padding: 0 20px 40px; }
+.ld-nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); z-index: 5; }
+.ld-nav .brand { padding: 0; } .ld-nav .brand strong { font-family: var(--display); font-size: 1.15rem; }
+.ld-nav nav { display: flex; gap: 18px; align-items: center; } .ld-nav nav a:not(.btn) { color: var(--text-2); font-weight: 500; }
+.ld-hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; padding: 56px 0 40px; }
+.ld-hero h1 { font-family: var(--display); font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.05; letter-spacing: -.02em; }
+.ld-hero .lead { font-size: 1.12rem; color: var(--text-2); margin: 18px 0 24px; max-width: 34em; }
+.ld-hero .row, .ld-get .row { gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.btn.big { padding: 13px 20px; font-size: 1rem; border-radius: 14px; display: inline-flex; align-items: center; gap: 8px; }
+.btn.disabled { opacity: .55; pointer-events: none; }
+.ico { width: 20px; height: 20px; fill: currentColor; flex: none; vertical-align: -4px; }
+.ld-visual { display: flex; justify-content: center; }
+.ld-phone { width: 270px; border-radius: 34px; padding: 22px 16px; background: linear-gradient(160deg, #127A63, #0C4E4A 55%, #082C33); box-shadow: 0 30px 60px rgba(8, 44, 51, .35); color: #fff; display: flex; flex-direction: column; gap: 10px; }
+.ld-bal { padding: 6px 8px 14px; } .ld-bal small { opacity: .75; display: block; } .ld-bal strong { font-family: var(--display); font-size: 1.9rem; }
+.ld-acc { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.1); border-radius: 14px; padding: 9px 10px; }
+.ld-acc span:nth-child(2) { flex: 1; } .ld-acc b { font-weight: 600; }
+.ld-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 30px 0; }
+.ld-feat { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; }
+.ld-feat .ico.feat { width: 34px; height: 34px; padding: 7px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); box-sizing: border-box; }
+.ld-feat h3 { margin: 12px 0 6px; font-size: 1.02rem; } .ld-feat p { color: var(--text-2); font-size: .93rem; }
+.ld-get { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 28px; margin: 20px 0; }
+.ld-get h2 { font-family: var(--display); display: flex; align-items: center; gap: 10px; }
+.ld-get p { color: var(--text-2); max-width: 46em; margin: 10px 0; }
+.ld-steps { margin: 14px 0 18px 20px; color: var(--text-2); display: grid; gap: 6px; }
+.hash { word-break: break-all; }
+.ld-account { display: grid; place-items: center; padding: 30px 0; }
+.ld-account .tabs { display: flex; gap: 6px; background: var(--surface-2); border-radius: 12px; padding: 4px; }
+.ld-account .tab { flex: 1; border: 0; background: transparent; padding: 8px; border-radius: 9px; font: inherit; color: var(--text-2); cursor: pointer; }
+.ld-account .tab.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+.ld-account .form-title { font-family: var(--display); margin-top: 4px; }
+.ld-foot { display: flex; justify-content: space-between; color: var(--muted); padding: 24px 0 0; border-top: 1px solid var(--line); margin-top: 20px; }
+@media (max-width: 820px) {
+  .ld-hero { grid-template-columns: 1fr; padding-top: 28px; } .ld-visual { order: -1; }
+  .ld-features { grid-template-columns: 1fr; } .ld-nav nav a:not(.btn) { display: none; }
+}
+.mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .08em; }
+.ld-account .tabs:empty { display: none; }

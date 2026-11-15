@@ -3,7 +3,9 @@
  * FreeFinance sync server
  * ------------------------------------------------------------
  * - Zero npm dependencies (Node >= 22.13: node:sqlite, node:crypto, node:http).
- * - Single-owner account; each logged-in client is a "device" with its own number.
+ * - Multiple accounts (users); each user's data is separate. The first account is created with the
+ *   one-time setup code and is the admin; others sign up with the admin's invite code.
+ * - Each logged-in client is a "device" with its own number (unique across the server).
  * - Records are stored generically as { tbl, id, data(JSON), deleted, ts, seq }.
  *   `id` is a GLOBAL id: deviceNo * 2^40 + the device's local autoincrement id.
  * - Conflict rule: last write wins by client timestamp `ts`.
@@ -26,6 +28,9 @@ const FILES_DIR = path.join(DATA_DIR, 'files');
 const PULL_LIMIT = 2000;
 const DEVICE_SPAN = 2 ** 40;
 const MAX_DEVICES = 8191; // keeps global ids below 2^53 (JS safe integers)
+const MAX_USERS = Math.max(1, Number(process.env.FF_MAX_USERS || 50));
+const DOWNLOAD_DIR = path.join(DATA_DIR, 'downloads');
+const APK_NAME = 'my-finance.apk';
 
 // Tables the Android Room schema syncs, plus "prefs" for shared settings.
 const TABLES = new Set([
@@ -45,37 +50,76 @@ db.exec(`
     id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, pass_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (
     device_no INTEGER PRIMARY KEY, name TEXT, kind TEXT, token_hash TEXT,
-    created_at INTEGER NOT NULL, last_seen INTEGER, revoked INTEGER NOT NULL DEFAULT 0);
-  CREATE TABLE IF NOT EXISTS records (
-    tbl TEXT NOT NULL, id INTEGER NOT NULL, data TEXT, deleted INTEGER NOT NULL DEFAULT 0,
-    ts INTEGER NOT NULL, seq INTEGER NOT NULL, device_no INTEGER,
-    PRIMARY KEY (tbl, id));
-  CREATE INDEX IF NOT EXISTS records_seq ON records(seq);
+    created_at INTEGER NOT NULL, last_seen INTEGER, revoked INTEGER NOT NULL DEFAULT 0, user_id INTEGER);
 `);
+fs.mkdirSync(DOWNLOAD_DIR, { recursive: true, mode: 0o755 });
+migrateToMultiUser();
+
+/**
+ * Schema v2: records and photos belong to a user. A v1 database (single owner) is backed up with
+ * VACUUM INTO, then every existing record, device and photo is assigned to the first user.
+ */
+function migrateToMultiUser() {
+  const version = Number(db.prepare("SELECT v FROM meta WHERE k = 'schema'").get()?.v || 1);
+  if (version >= 2) return;
+  const hasOld = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'records'").get();
+  const deviceCols = db.prepare('PRAGMA table_info(devices)').all().map((c) => c.name);
+  if (hasOld) {
+    const backup = path.join(DATA_DIR, `backup-before-multiuser-${Date.now()}.db`);
+    db.exec(`VACUUM INTO '${backup.replace(/'/g, "''")}'`);
+    console.log(`Schema v1 -> v2: backup written to ${backup}`);
+  }
+  const owner = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get()?.id ?? 1;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!deviceCols.includes('user_id')) db.exec('ALTER TABLE devices ADD COLUMN user_id INTEGER');
+    db.prepare('UPDATE devices SET user_id = ? WHERE user_id IS NULL').run(owner);
+    db.exec(`CREATE TABLE IF NOT EXISTS records2 (
+      user_id INTEGER NOT NULL, tbl TEXT NOT NULL, id INTEGER NOT NULL, data TEXT, deleted INTEGER NOT NULL DEFAULT 0,
+      ts INTEGER NOT NULL, seq INTEGER NOT NULL, device_no INTEGER, PRIMARY KEY (user_id, tbl, id))`);
+    if (hasOld) {
+      db.prepare('INSERT OR REPLACE INTO records2(user_id, tbl, id, data, deleted, ts, seq, device_no) SELECT ?, tbl, id, data, deleted, ts, seq, device_no FROM records').run(owner);
+      db.exec('DROP TABLE records');
+    }
+    db.exec('ALTER TABLE records2 RENAME TO records');
+    db.exec('CREATE INDEX IF NOT EXISTS records_user_seq ON records(user_id, seq)');
+    db.exec('CREATE TABLE IF NOT EXISTS file_owners (user_id INTEGER NOT NULL, sha TEXT NOT NULL, PRIMARY KEY (user_id, sha))');
+    const own = db.prepare('INSERT OR IGNORE INTO file_owners(user_id, sha) VALUES(?, ?)');
+    for (const f of fs.readdirSync(FILES_DIR)) if (/^[a-f0-9]{64}$/.test(f)) own.run(owner, f);
+    db.prepare("INSERT INTO meta(k, v) VALUES('schema', '2') ON CONFLICT(k) DO UPDATE SET v = excluded.v").run();
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
 
 const q = {
   getMeta: db.prepare('SELECT v FROM meta WHERE k = ?'),
   setMeta: db.prepare('INSERT INTO meta(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v'),
   userCount: db.prepare('SELECT COUNT(*) n FROM users'),
-  getUser: db.prepare('SELECT * FROM users WHERE username = ?'),
+  getUser: db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE'),
+  userById: db.prepare('SELECT * FROM users WHERE id = ?'),
   firstUser: db.prepare('SELECT * FROM users ORDER BY id LIMIT 1'),
   addUser: db.prepare('INSERT INTO users(username, pass_hash, created_at) VALUES(?, ?, ?)'),
   setPass: db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?'),
   deviceByToken: db.prepare('SELECT * FROM devices WHERE token_hash = ? AND revoked = 0'),
   deviceByNo: db.prepare('SELECT * FROM devices WHERE device_no = ?'),
   maxDevice: db.prepare('SELECT COALESCE(MAX(device_no), 0) m FROM devices'),
-  addDevice: db.prepare('INSERT INTO devices(device_no, name, kind, token_hash, created_at, last_seen) VALUES(?, ?, ?, ?, ?, ?)'),
+  addDevice: db.prepare('INSERT INTO devices(device_no, name, kind, token_hash, created_at, last_seen, user_id) VALUES(?, ?, ?, ?, ?, ?, ?)'),
   reuseDevice: db.prepare('UPDATE devices SET name = ?, kind = ?, token_hash = ?, last_seen = ?, revoked = 0 WHERE device_no = ?'),
   touchDevice: db.prepare('UPDATE devices SET last_seen = ? WHERE device_no = ?'),
-  listDevices: db.prepare('SELECT device_no, name, kind, created_at, last_seen, revoked FROM devices ORDER BY device_no'),
-  revokeDevice: db.prepare('UPDATE devices SET revoked = 1, token_hash = NULL WHERE device_no = ?'),
-  getRecord: db.prepare('SELECT ts FROM records WHERE tbl = ? AND id = ?'),
-  upsertRecord: db.prepare(`INSERT INTO records(tbl, id, data, deleted, ts, seq, device_no) VALUES(?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(tbl, id) DO UPDATE SET data = excluded.data, deleted = excluded.deleted, ts = excluded.ts,
+  listDevices: db.prepare('SELECT device_no, name, kind, created_at, last_seen, revoked FROM devices WHERE user_id = ? ORDER BY device_no'),
+  revokeDevice: db.prepare('UPDATE devices SET revoked = 1, token_hash = NULL WHERE device_no = ? AND user_id = ?'),
+  getRecord: db.prepare('SELECT ts FROM records WHERE user_id = ? AND tbl = ? AND id = ?'),
+  upsertRecord: db.prepare(`INSERT INTO records(user_id, tbl, id, data, deleted, ts, seq, device_no) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, tbl, id) DO UPDATE SET data = excluded.data, deleted = excluded.deleted, ts = excluded.ts,
       seq = excluded.seq, device_no = excluded.device_no`),
-  pull: db.prepare('SELECT tbl, id, data, deleted, ts, seq FROM records WHERE seq > ? ORDER BY seq LIMIT ?'),
-  liveCount: db.prepare('SELECT COUNT(*) n FROM records WHERE deleted = 0 AND tbl != \'prefs\''),
+  pull: db.prepare('SELECT tbl, id, data, deleted, ts, seq FROM records WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ?'),
+  liveCount: db.prepare('SELECT COUNT(*) n FROM records WHERE user_id = ? AND deleted = 0 AND tbl != \'prefs\''),
   maxSeq: db.prepare('SELECT COALESCE(MAX(seq), 0) m FROM records'),
+  ownsFile: db.prepare('SELECT 1 FROM file_owners WHERE user_id = ? AND sha = ?'),
+  addFileOwner: db.prepare('INSERT OR IGNORE INTO file_owners(user_id, sha) VALUES(?, ?)'),
 };
 
 // ---------- helpers ----------
@@ -154,19 +198,20 @@ function auth(req) {
   return dev;
 }
 
-function issueDevice(body) {
+function issueDevice(body, userId) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
   const name = String(body.deviceName || 'Device').slice(0, 80);
   const kind = ['android', 'web'].includes(body.kind) ? body.kind : 'other';
   let no = Number(body.deviceNo);
+  // A device number is only reused by the same user (it decides the id range of their rows).
   const existing = Number.isInteger(no) && no > 0 ? q.deviceByNo.get(no) : null;
-  if (existing) {
+  if (existing && existing.user_id === userId) {
     q.reuseDevice.run(name, kind, sha256(token), now, no);
   } else {
     no = q.maxDevice.get().m + 1;
     if (no > MAX_DEVICES) throw new HttpError(409, 'Device limit reached');
-    q.addDevice.run(no, name, kind, sha256(token), now, now);
+    q.addDevice.run(no, name, kind, sha256(token), now, now, userId);
   }
   return { token, deviceNo: no, deviceSpan: DEVICE_SPAN };
 }
@@ -194,6 +239,21 @@ function readRaw(req, limit) {
   });
 }
 
+// ---------- invites & app downloads ----------
+const ENV_INVITE = String(process.env.FF_INVITE_CODE || '').trim();
+const inviteCode = () => ENV_INVITE || q.getMeta.get('invite_code')?.v || '';
+const newInviteCode = () => crypto.randomBytes(6).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, 'X').slice(0, 8);
+const USERNAME_RE = /^[A-Za-z0-9._@-]{3,64}$/;
+function appInfo() {
+  const apk = path.join(DOWNLOAD_DIR, APK_NAME);
+  if (!fs.existsSync(apk)) return null;
+  let meta = {};
+  try { meta = JSON.parse(fs.readFileSync(path.join(DOWNLOAD_DIR, 'version.json'), 'utf8')); } catch { /* optional */ }
+  const st = fs.statSync(apk);
+  return { url: '/download/' + APK_NAME, size: st.size, updatedAt: st.mtimeMs, versionName: meta.versionName || null,
+    versionCode: Number(meta.versionCode) || null, sha256: meta.sha256 || null, minAndroid: meta.minAndroid || '7.0' };
+}
+
 // ---------- API ----------
 async function api(req, res, url) {
   const p = url.pathname;
@@ -202,7 +262,32 @@ async function api(req, res, url) {
   if (p === '/api/health') return send(res, 200, { ok: true });
 
   if (p === '/api/status' && req.method === 'GET') {
-    return send(res, 200, { needsSetup: q.userCount.get().n === 0, serverTime: Date.now(), deviceSpan: DEVICE_SPAN });
+    const users = q.userCount.get().n;
+    return send(res, 200, { needsSetup: users === 0, signupOpen: users > 0 && users < MAX_USERS && !!inviteCode(),
+      serverTime: Date.now(), deviceSpan: DEVICE_SPAN, app: appInfo() });
+  }
+
+  if (p === '/api/app-version' && req.method === 'GET') {
+    return send(res, 200, { app: appInfo() });
+  }
+
+  if (p === '/api/signup' && req.method === 'POST') {
+    if (throttled(ip)) throw new HttpError(429, 'Too many attempts, try again later');
+    const b = await readJson(req);
+    const code = inviteCode();
+    if (!code || q.userCount.get().n === 0) throw new HttpError(403, 'Sign-up is closed');
+    const given = String(b.inviteCode || '').trim().toUpperCase();
+    if (given.length !== code.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(code.toUpperCase()))) {
+      noteFailure(ip); throw new HttpError(403, 'Invalid invite code');
+    }
+    if (q.userCount.get().n >= MAX_USERS) throw new HttpError(403, 'This server is full');
+    const username = String(b.username || '').trim();
+    const password = String(b.password || '');
+    if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Username: 3–64 letters, digits or . _ @ -');
+    if (password.length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
+    if (q.getUser.get(username)) throw new HttpError(409, 'That username is taken');
+    const r = q.addUser.run(username, hashPassword(password), Date.now());
+    return send(res, 200, { username, ...issueDevice(b, Number(r.lastInsertRowid)), serverTime: Date.now() });
   }
 
   if (p === '/api/setup' && req.method === 'POST') {
@@ -213,12 +298,12 @@ async function api(req, res, url) {
     if (String(b.setupCode || '').trim().toUpperCase() !== code) { noteFailure(ip); throw new HttpError(403, 'Wrong setup code'); }
     const username = String(b.username || '').trim();
     const password = String(b.password || '');
-    if (!/^[A-Za-z0-9._@-]{3,64}$/.test(username)) throw new HttpError(400, 'Username: 3–64 letters, digits or . _ @ -');
+    if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Username: 3–64 letters, digits or . _ @ -');
     if (password.length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
-    q.addUser.run(username, hashPassword(password), Date.now());
+    const r = q.addUser.run(username, hashPassword(password), Date.now());
     q.setMeta.run('setup_code', '');
     fs.rmSync(path.join(DATA_DIR, 'SETUP_CODE.txt'), { force: true });
-    return send(res, 200, { username, ...issueDevice(b), serverTime: Date.now() });
+    return send(res, 200, { username, ...issueDevice(b, Number(r.lastInsertRowid)), serverTime: Date.now() });
   }
 
   if (p === '/api/login' && req.method === 'POST') {
@@ -230,22 +315,26 @@ async function api(req, res, url) {
       throw new HttpError(401, 'Wrong username or password');
     }
     failures.delete(ip);
-    return send(res, 200, { username: user.username, ...issueDevice(b), serverTime: Date.now() });
+    return send(res, 200, { username: user.username, ...issueDevice(b, user.id), serverTime: Date.now() });
   }
 
   // ---- everything below requires a device token ----
   const dev = auth(req);
+  const uid = dev.user_id;
+  const me = q.userById.get(uid);
+  if (!me) throw new HttpError(401, 'Account no longer exists');
+  const isAdmin = me.id === q.firstUser.get()?.id;
 
   if (p === '/api/me' && req.method === 'GET') {
     return send(res, 200, {
-      username: q.firstUser.get()?.username, deviceNo: dev.device_no, deviceSpan: DEVICE_SPAN,
-      serverTime: Date.now(), cursor: seqCounter, liveRecords: q.liveCount.get().n,
+      username: me.username, admin: isAdmin, deviceNo: dev.device_no, deviceSpan: DEVICE_SPAN,
+      serverTime: Date.now(), cursor: seqCounter, liveRecords: q.liveCount.get(uid).n,
     });
   }
 
   if (p === '/api/sync/pull' && req.method === 'GET') {
     const since = Math.max(0, Number(url.searchParams.get('since') || 0) | 0);
-    const rows = q.pull.all(since, PULL_LIMIT + 1);
+    const rows = q.pull.all(uid, since, PULL_LIMIT + 1);
     const more = rows.length > PULL_LIMIT;
     if (more) rows.pop();
     const records = rows.map((r) => ({
@@ -264,10 +353,10 @@ async function api(req, res, url) {
     try {
       for (const c of changes) {
         if (!validChange(c)) { invalid.push({ tbl: c?.tbl, id: c?.id }); continue; }
-        const cur = q.getRecord.get(c.tbl, c.id);
+        const cur = q.getRecord.get(uid, c.tbl, c.id);
         if (cur && cur.ts > c.ts) { rejected.push({ tbl: c.tbl, id: c.id }); continue; } // newer version already stored
         seqCounter += 1;
-        q.upsertRecord.run(c.tbl, c.id, c.deleted ? null : JSON.stringify(c.data), c.deleted ? 1 : 0, c.ts, seqCounter, dev.device_no);
+        q.upsertRecord.run(uid, c.tbl, c.id, c.deleted ? null : JSON.stringify(c.data), c.deleted ? 1 : 0, c.ts, seqCounter, dev.device_no);
         applied++;
       }
       db.exec('COMMIT');
@@ -280,7 +369,7 @@ async function api(req, res, url) {
   if (fm) {
     const file = path.join(FILES_DIR, fm[1]);
     if (req.method === 'HEAD' || req.method === 'GET') {
-      if (!fs.existsSync(file)) { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end(); }
+      if (!fs.existsSync(file) || !q.ownsFile.get(uid, fm[1])) { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end(); }
       const head = Buffer.alloc(12); const fd = fs.openSync(file, 'r'); fs.readSync(fd, head, 0, 12, 0); fs.closeSync(fd);
       res.writeHead(200, { 'Content-Type': imageType(head) || 'application/octet-stream', 'Content-Length': fs.statSync(file).size,
         'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
@@ -292,26 +381,38 @@ async function api(req, res, url) {
       if (!imageType(body)) throw new HttpError(415, 'Only JPEG, PNG, WebP, GIF or HEIC images are accepted');
       if (sha256(body) !== fm[1]) throw new HttpError(400, 'Content does not match its SHA-256 name');
       if (!fs.existsSync(file)) { fs.writeFileSync(file + '.tmp', body, { mode: 0o600 }); fs.renameSync(file + '.tmp', file); }
+      q.addFileOwner.run(uid, fm[1]);
       return send(res, 200, { ok: true, size: body.length });
     }
   }
 
   if (p === '/api/devices' && req.method === 'GET') {
-    return send(res, 200, { devices: q.listDevices.all(), current: dev.device_no });
+    return send(res, 200, { devices: q.listDevices.all(uid), current: dev.device_no });
   }
   const rm = /^\/api\/devices\/(\d+)$/.exec(p);
   if (rm && req.method === 'DELETE') {
-    q.revokeDevice.run(Number(rm[1]));
+    q.revokeDevice.run(Number(rm[1]), uid);
     return send(res, 200, { ok: true });
   }
 
   if (p === '/api/password' && req.method === 'POST') {
     const b = await readJson(req);
-    const user = q.firstUser.get();
+    const user = me;
     if (!verifyPassword(String(b.currentPassword || ''), user.pass_hash)) throw new HttpError(403, 'Current password is wrong');
     if (String(b.newPassword || '').length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
     q.setPass.run(hashPassword(String(b.newPassword)), user.id);
     return send(res, 200, { ok: true });
+  }
+
+  // ---- admin: invite code for sign-ups ----
+  if (p === '/api/admin/invite') {
+    if (!isAdmin) throw new HttpError(403, 'Only the server owner can manage invites');
+    if (req.method === 'POST') {
+      const b = await readJson(req);
+      if (ENV_INVITE) throw new HttpError(409, 'The invite code is set by FF_INVITE_CODE on the server');
+      q.setMeta.run('invite_code', b.disable ? '' : newInviteCode());
+    }
+    return send(res, 200, { inviteCode: inviteCode() || null, fromEnv: !!ENV_INVITE, users: q.userCount.get().n, maxUsers: MAX_USERS });
   }
 
   throw new HttpError(404, 'Not found');
@@ -329,6 +430,19 @@ const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
+function serveDownload(req, res, url) {
+  const apk = path.join(DOWNLOAD_DIR, APK_NAME);
+  if (url.pathname !== '/download/' + APK_NAME || !fs.existsSync(apk)) { res.writeHead(404, SECURITY_HEADERS); return res.end('Not found'); }
+  res.writeHead(200, {
+    ...SECURITY_HEADERS,
+    'Content-Type': 'application/vnd.android.package-archive',
+    'Content-Length': fs.statSync(apk).size,
+    'Content-Disposition': `attachment; filename="${APK_NAME}"`,
+    'Cache-Control': 'no-cache',
+  });
+  if (req.method === 'HEAD') return res.end();
+  fs.createReadStream(apk).pipe(res);
+}
 function serveStatic(req, res, url) {
   let rel = decodeURIComponent(url.pathname);
   if (rel.endsWith('/')) rel += 'index.html';
@@ -348,6 +462,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname.startsWith('/download/')) return serveDownload(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Method not allowed');
     return serveStatic(req, res, url);
   } catch (e) {

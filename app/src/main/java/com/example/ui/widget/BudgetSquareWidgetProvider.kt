@@ -56,7 +56,7 @@ class BudgetSquareWidgetProvider : AppWidgetProvider() {
                     for (widgetId in appWidgetIds) {
                         val views = RemoteViews(context.packageName, R.layout.widget_budget_square).apply {
                             setTextViewText(R.id.tv_budget_pct, "$percent%")
-                            setTextViewText(R.id.tv_budget_remaining, "${CurrencyUtils.formatCurrency(remaining, baseCurrency)} Left")
+                            setTextViewText(R.id.tv_budget_remaining, "${CurrencyUtils.formatCurrency(remaining, baseCurrency)} left")
                             setTextViewText(
                                 R.id.tv_budget_spent_summary,
                                 "Spent ${CurrencyUtils.formatCompact(totalSpent, baseCurrency)} / ${CurrencyUtils.formatCompact(totalBudgetLimit, baseCurrency)}"

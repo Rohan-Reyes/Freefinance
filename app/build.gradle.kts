@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.financetracker.bwxy"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.3.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -42,9 +42,14 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      // Use the upload key when it's configured; otherwise sign with the local debug key so a release
+      // build can update an installed debug build in place (same signature, data kept).
+      val uploadKeyReady = System.getenv("STORE_PASSWORD") != null &&
+        file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks").exists()
+      signingConfig = signingConfigs.getByName(if (uploadKeyReady) "release" else "debugConfig")
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }

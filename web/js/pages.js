@@ -4,6 +4,7 @@ import * as L from './logic.js';
 import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js';
 import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js';
 import { BANKS, bankFor } from './banks.js';
+import { detectBrand, brandMark, networkMark } from './brands.js';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
@@ -291,9 +292,9 @@ const accounts = {
         const conv = a.currency_code !== L.base() ? `<small class="muted">≈ ${money(L.convert(bal, a.currency_code, L.base()))}</small>` : '';
         const locked = a.is_locked || (a.locked_until && a.locked_until > Date.now());
         return `<div class="acc-row ${depth ? 'sub' : ''}">
-          <span class="dot" style="background:${argbToCss(a.color)}"></span>
+          ${(() => { const b = !depth && detectBrand(a.name, a.linked_app_package); return b ? brandMark(b, 34) : depth ? `<span class="dot" style="background:${argbToCss(a.color)}"></span>` : `<span class="brand-mark" style="width:34px;height:34px;background:${argbToCss(a.color)}22;color:${argbToCss(a.color)};font-size:15px">${esc((a.name || '?').slice(0, 1).toUpperCase())}</span>`; })()}
           <a class="acc-main" href="#/accounts/${a.id}"><strong>${esc(a.name)}</strong>
-            <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${locked ? ' · 🔒 Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
+            <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${locked ? ' · Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
           <div class="acc-bal"><strong class="${bal < 0 ? 'neg' : ''}">${money(bal, a.currency_code)}</strong>${conv}</div>
           <div class="row-actions">
             ${bankFor(a.linked_app_package) ? `<a class="icon-btn launch" title="Open ${esc(bankFor(a.linked_app_package)[1])} website" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">↗</a>` : ''}
@@ -702,13 +703,16 @@ const cards = {
       <div class="kpis big">${kpi('Cards', String(list.length))}${kpi('Credit used', money(used), 'neg')}${kpi('Available credit', money(Math.max(0, limit - used)), 'pos')}</div>
       <div class="cards-grid">${list.length ? list.map((c) => {
         const [c1, c2] = FINISH[c.card_finish] || FINISH.OBSIDIAN_GOLD, show = revealed.has(c.id), digits = String(c.card_number || '').replace(/\D/g, '');
+        const brand = detectBrand(c.issuing_bank, c.card_name), bg = brand ? `linear-gradient(135deg,${brand.colors.join(',')})` : `linear-gradient(135deg,${c1},${c2})`;
+        const title = brand ? `<span class="pc-word" style="color:${brand.ink}">${esc(brand.wordmark)}</span>` : `<span class="pc-word">${esc(c.issuing_bank || c.card_name)}</span>`;
         const num = show && digits ? digits.match(/.{1,4}/g).join('  ') : `••••  ••••  ••••  ${L.lastFour(c)}`;
         const util = c.credit_limit > 0 ? c.current_credit_used / c.credit_limit : 0;
-        return `<div class="pay-card-wrap"><div class="pay-card ${c.is_frozen ? 'frozen' : ''}" style="background:linear-gradient(135deg,${c1},${c2})">
-          <div class="pc-top"><span>${esc(c.issuing_bank || c.card_name)}</span><span>${esc(c.card_network)}</span></div>
+        return `<div class="pay-card-wrap"><div class="pay-card ${c.is_frozen ? 'frozen' : ''} ${brand ? 'brand-' + brand.id : ''}" style="background:${bg};${brand ? `color:${brand.ink}` : ''}">
+          <div class="pc-top">${title}<small class="pc-type">${c.is_virtual ? 'VIRTUAL ' : ''}${esc(c.card_type)}</small></div>
+          <div class="pc-chip"></div>
           <div class="pc-num">${esc(num)}</div>
-          <div class="pc-bot"><span>${esc(c.cardholder_name || '')}<br><small>${esc(c.card_name)}</small></span><span>${String(c.expiry_month).padStart(2, '0')}/${String(c.expiry_year % 100).padStart(2, '0')}${show && c.cvv ? `<br><small>CVV ${esc(c.cvv)}</small>` : ''}</span></div>
-          ${c.is_frozen ? '<div class="pc-frozen">❄ Frozen</div>' : ''}</div>
+          <div class="pc-bot"><span>${esc((c.cardholder_name || '').toUpperCase())}<br><small>EXP ${String(c.expiry_month).padStart(2, '0')}/${String(c.expiry_year % 100).padStart(2, '0')}${show && c.cvv ? ` · CVV ${esc(c.cvv)}` : ''}</small></span>${networkMark(c.card_network)}</div>
+          ${c.is_frozen ? '<div class="pc-frozen">Frozen</div>' : ''}</div>
           ${c.card_type === 'CREDIT' ? `<div class="pc-meta">${progressBar(util)}<small class="muted">${money(c.current_credit_used, c.currency_code)} of ${money(c.credit_limit, c.currency_code)} · min due ${money(c.minimum_payment_due, c.currency_code)}${c.payment_due_day ? ' · due day ' + c.payment_due_day : ''}</small></div>`
             : `<div class="pc-meta"><small class="muted">${esc(L.CARD_TYPES.find((t) => t[0] === c.card_type)?.[1] || c.card_type)} · ${c.linked_account_id ? 'linked to ' + esc(accName(c.linked_account_id)) : 'no linked account'}</small></div>`}
           <div class="row"><button class="btn small" data-action="reveal" data-id="${c.id}">${show ? 'Hide' : 'Reveal'}</button><button class="btn small" data-action="charge" data-id="${c.id}">Log charge</button>
@@ -877,15 +881,24 @@ const receipts = {
 
 // ---------------------------------------------------------------- SETTINGS
 let devicesCache = null;
+let serverInfo = null; // { app, invite }
 const settings = {
   title: 'Settings',
   render() {
     const s = store.status, a = store.auth;
     const rates = store.all('exchange_rates').sort((x, y) => x.from_currency.localeCompare(y.from_currency));
     if (!devicesCache) settings.loadDevices();
+    if (!serverInfo) settings.loadServerInfo();
     const theme = themePrefs();
     return `<div class="page-head"><h1>Settings</h1></div>
     <div class="grid">
+      <div class="card"><h3>Android app</h3>
+        ${serverInfo?.app ? `<p>Version ${esc(serverInfo.app.versionName || '—')} · ${(serverInfo.app.size / 1048576).toFixed(1)} MB. Install it, or install over your current app to update. Your data stays.</p>
+          <a class="btn primary" href="${esc(serverInfo.app.url)}" download>Download APK</a>` : '<p class="muted">No APK has been uploaded to this server yet.</p>'}</div>
+      ${serverInfo?.me?.admin ? `<div class="card"><h3>Invite people</h3>
+        <p class="muted">Anyone with the invite code can create their own account on this server. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
+        ${serverInfo.invite?.inviteCode ? `<p>Invite code: <strong class="mono">${esc(serverInfo.invite.inviteCode)}</strong></p>` : '<p>Sign-up is closed.</p>'}
+        ${serverInfo.invite?.fromEnv ? '<p class="muted">Set by FF_INVITE_CODE on the server.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>` : ''}
       <div class="card"><h3>Sync</h3>
         <p>Signed in as <strong>${esc(a.username)}</strong> · this browser is device #${a.deviceNo}</p>
         <p class="muted">${s.syncing ? 'Syncing…' : s.error ? `⚠ ${esc(s.error)}` : `Last sync ${s.lastSync ? fmtDateTime(s.lastSync) : 'never'}`} · ${store.pending.size} pending change(s)</p>
@@ -918,6 +931,16 @@ const settings = {
         <p class="muted">JSON export contains every record (including card numbers) — store it safely.</p></div>
     </div>`;
   },
+  async loadServerInfo() {
+    const { api } = await import('./store.js');
+    const tok = store.auth.token;
+    try {
+      const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
+      const invite = me.admin ? await api('/api/admin/invite', { token: tok }).catch(() => null) : null;
+      serverInfo = { app: status.app, me, invite };
+    } catch { serverInfo = { app: null, me: {}, invite: null }; }
+    store.emit();
+  },
   async loadDevices() {
     try { const { api } = await import('./store.js'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
@@ -939,6 +962,8 @@ const settings = {
       toast('Rate saved'); } }),
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will fall back to reference rates.')) store.remove('exchange_rates', el.dataset.id); },
+    newInvite: async () => { const { api } = await import('./store.js'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
     revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
     changePassword: async () => { const { api } = await import('./store.js'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
     exportJson: async () => {

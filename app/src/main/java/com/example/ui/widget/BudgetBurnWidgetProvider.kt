@@ -59,9 +59,9 @@ class BudgetBurnWidgetProvider : AppWidgetProvider() {
                 withContext(Dispatchers.Main) {
                     for (appWidgetId in appWidgetIds) {
                         val views = RemoteViews(context.packageName, R.layout.widget_budget_burn).apply {
-                            setTextViewText(R.id.tv_remaining_allowance, "${CurrencyUtils.formatCurrency(remaining, baseCurrency)} Left")
-                            setTextViewText(R.id.tv_budget_pct, "$pct% Spent")
-                            setTextViewText(R.id.tv_burn_rate, "Velocity: ${CurrencyUtils.formatCurrency(dailyBurn, baseCurrency)}/day (Day $currentDay)")
+                            setTextViewText(R.id.tv_remaining_allowance, "${CurrencyUtils.formatCurrency(remaining, baseCurrency)} left")
+                            setTextViewText(R.id.tv_budget_pct, "$pct% spent")
+                            setTextViewText(R.id.tv_burn_rate, "≈ ${CurrencyUtils.formatCurrency(dailyBurn, baseCurrency)} a day · day $currentDay")
                             setTextViewText(R.id.tv_total_spent_budget, "Spent: ${CurrencyUtils.formatCompact(currentMonthSpent, baseCurrency)} / ${CurrencyUtils.formatCompact(totalBudget, baseCurrency)}")
 
                             setOnClickPendingIntent(R.id.widget_root, pendingAppIntent)

@@ -22,6 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -207,4 +210,42 @@ fun RowDivider(modifier: Modifier = Modifier, inset: Dp = 0.dp) {
         thickness = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     )
+}
+
+/** One overflow (⋮) menu per list item instead of rows of edit / delete icons. */
+data class ItemAction(val label: String, val icon: ImageVector, val destructive: Boolean = false, val onClick: () -> Unit)
+
+@Composable
+fun ItemActionsMenu(actions: List<ItemAction>, modifier: Modifier = Modifier, contentDescription: String = "More actions") {
+    var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Box(modifier) {
+        androidx.compose.material3.IconButton(onClick = { open = true }, modifier = Modifier.size(36.dp)) {
+            Icon(androidx.compose.material.icons.Icons.Rounded.MoreVert, contentDescription = contentDescription, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            actions.forEach { a ->
+                val tint = if (a.destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(a.label, color = tint) },
+                    leadingIcon = { Icon(a.icon, contentDescription = null, tint = tint) },
+                    onClick = { open = false; a.onClick() }
+                )
+            }
+        }
+    }
+}
+
+/** Circle with a person's / item's initial — used for debts, bills and clients. */
+@Composable
+fun InitialAvatar(name: String, modifier: Modifier = Modifier, size: Dp = 40.dp, color: Color = MaterialTheme.colorScheme.primary) {
+    Surface(modifier = modifier.size(size), shape = androidx.compose.foundation.shape.CircleShape, color = color.copy(alpha = 0.16f)) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = name.trim().split(' ').filter { it.firstOrNull()?.isLetterOrDigit() == true }.take(2).joinToString("") { it.take(1).uppercase() }.ifEmpty { "?" },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = color
+            )
+        }
+    }
 }

@@ -77,7 +77,7 @@ object BankAppLauncher {
             displayName = "ShopeePay",
             packageName = "com.shopee.ph",
             alternatePackages = listOf("com.shopee.id", "com.shopee.my", "com.shopee.sg"),
-            keywords = listOf("shopeepay", "shopee", "shopee pay")
+            keywords = listOf("shopeepay", "shoppepay", "shopee", "shopee pay", "spaylater")
         ),
         BankAppInfo(
             displayName = "GrabPay",

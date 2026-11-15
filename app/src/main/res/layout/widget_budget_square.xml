@@ -19,10 +19,10 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:letterSpacing="0.06"
-            android:text="MONTHLY BUDGET"
+            android:text="Budget"
             android:textColor="#FFB74D"
             android:textSize="10sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:id="@+id/tv_budget_pct"
@@ -34,7 +34,7 @@
             android:text="0%"
             android:textColor="#FFFFFF"
             android:textSize="9sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Center Content: Remaining Allowance & Spent summary -->
@@ -54,7 +54,7 @@
             android:text="₱0.00 Left"
             android:textColor="#FFFFFF"
             android:textSize="19sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:id="@+id/tv_budget_spent_summary"
@@ -77,9 +77,9 @@
         android:gravity="center"
         android:paddingHorizontal="10dp"
         android:paddingVertical="8dp"
-        android:text="View Budgets →"
+        android:text="Open budgets"
         android:textColor="#FFB74D"
         android:textSize="11sp"
-        android:textStyle="bold" />
+        android:fontFamily="sans-serif-medium" />
 
 </LinearLayout>

@@ -1,5 +1,17 @@
 package com.example.ui.screens
 
+import com.example.ui.components.ds.SectionCard
+import com.example.ui.components.ds.StatusPill
+import com.example.ui.components.ds.ItemActionsMenu
+import com.example.ui.components.ds.ItemAction
+import com.example.ui.components.ds.InitialAvatar
+import com.example.ui.theme.FinWarning
+import com.example.ui.theme.FinInfo
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.ui.theme.FinNegative
 import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
@@ -451,196 +463,59 @@ private fun DebtItemCard(
     onSettleClicked: () -> Unit,
     onDeleteClicked: () -> Unit
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
-
-    // Payout date calculation
-    val payoutStatus = remember(debt.dueDate) {
-        val due = debt.dueDate
-        if (due == null) {
-            null
-        } else {
-            val nowCal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val dueCal = Calendar.getInstance().apply {
-                time = due
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val diffMillis = dueCal.timeInMillis - nowCal.timeInMillis
-            val diffDays = (diffMillis / (1000L * 60 * 60 * 24)).toInt()
-
-            when {
-                diffDays < 0 -> Pair("Overdue by ${-diffDays}d", FinNegative)
-                diffDays == 0 -> Pair("Expected Today", Color(0xFFFF9100))
-                diffDays == 1 -> Pair("Expected Tomorrow", Color(0xFF00B0FF))
-                diffDays <= 7 -> Pair("Due in ${diffDays}d", Color(0xFF2979FF))
-                else -> Pair("Due in ${diffDays}d", Color.Gray)
-            }
+    val dateFormat = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
+    val warn = MaterialTheme.colorScheme.onSurfaceVariant
+    // (label, colour) for the due date, e.g. "Overdue 3d", "Due tomorrow"
+    val due = remember(debt.dueDate) {
+        val d = debt.dueDate ?: return@remember null
+        val midnight = { c: Calendar -> c.apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) } }
+        val today = midnight(Calendar.getInstance())
+        val dueDay = midnight(Calendar.getInstance().apply { time = d })
+        val days = ((dueDay.timeInMillis - today.timeInMillis) / 86_400_000L).toInt()
+        when {
+            days < 0 -> "Overdue ${-days}d" to FinNegative
+            days == 0 -> "Due today" to FinWarning
+            days == 1 -> "Due tomorrow" to FinWarning
+            days <= 7 -> "Due in ${days}d" to FinInfo
+            else -> "Due ${dateFormat.format(d)}" to warn
         }
     }
+    val paidRatio = if (debt.totalAmount > 0) (1 - debt.remainingAmount / debt.totalAmount).toFloat().coerceIn(0f, 1f) else 0f
+    val amountColor = if (isLent) FinPositive else FinNegative
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = debt.personName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Created ${dateFormat.format(debt.createdAt)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = CurrencyUtils.formatCurrency(debt.remainingAmount, currencyCode),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isLent) FinPositive else FinNegative
-                    )
-                    if (debt.remainingAmount < debt.totalAmount) {
-                        Text(
-                            text = "of " + CurrencyUtils.formatCurrency(debt.totalAmount, currencyCode),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+    SectionCard(onClick = onSettleClicked, contentPadding = PaddingValues(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            InitialAvatar(debt.personName, color = amountColor)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(debt.personName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (due != null) StatusPill(due.first, color = due.second) else Text("No due date", style = MaterialTheme.typography.bodySmall, color = warn)
+                    if (!debt.notes.isNullOrBlank()) {
+                        Text(debt.notes, style = MaterialTheme.typography.bodySmall, color = warn, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-
-            // Expected Day of Payout Indicator Badge
-            Spacer(modifier = Modifier.height(8.dp))
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (debt.dueDate != null) {
-                    if (payoutStatus?.first?.startsWith("Overdue") == true) {
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-                    }
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (debt.dueDate != null) Icons.Default.Event else Icons.Default.Schedule,
-                            contentDescription = "Payout Day",
-                            modifier = Modifier.size(14.dp),
-                            tint = if (payoutStatus?.first?.startsWith("Overdue") == true) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            }
-                        )
-                        Text(
-                            text = if (debt.dueDate != null) {
-                                (if (isLent) "Expected Payout: " else "Expected Repayment: ") + dateFormat.format(debt.dueDate)
-                            } else {
-                                "No expected payout date set"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (debt.dueDate != null) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (payoutStatus?.first?.startsWith("Overdue") == true) {
-                                MaterialTheme.colorScheme.onErrorContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-                    }
-
-                    if (payoutStatus != null) {
-                        Text(
-                            text = payoutStatus.first,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = payoutStatus.second
-                        )
-                    }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(CurrencyUtils.formatCurrency(debt.remainingAmount, currencyCode), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = amountColor)
+                if (debt.remainingAmount < debt.totalAmount) {
+                    Text("of " + CurrencyUtils.formatCurrency(debt.totalAmount, currencyCode), style = MaterialTheme.typography.labelSmall, color = warn)
                 }
             }
-
-            if (!debt.notes.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = debt.notes,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            ItemActionsMenu(
+                listOf(
+                    ItemAction(if (isLent) "Receive payment" else "Pay", Icons.Rounded.Payments, onClick = onSettleClicked),
+                    ItemAction("Edit", Icons.Rounded.Edit, onClick = onEditClicked),
+                    ItemAction("Delete", Icons.Rounded.Delete, destructive = true, onClick = onDeleteClicked)
                 )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onEditClicked) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                IconButton(onClick = onDeleteClicked) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Button(
-                    onClick = onSettleClicked,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isLent) FinPositive else MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Icon(imageVector = Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isLent) "Receive / Settle" else "Pay / Settle")
-                }
-            }
+            )
+        }
+        if (paidRatio > 0f) {
+            LinearProgressIndicator(
+                progress = { paidRatio },
+                color = amountColor,
+                trackColor = amountColor.copy(alpha = 0.15f),
+                modifier = Modifier.fillMaxWidth().padding(start = 52.dp, end = 12.dp, top = 10.dp).height(4.dp)
+            )
         }
     }
 }

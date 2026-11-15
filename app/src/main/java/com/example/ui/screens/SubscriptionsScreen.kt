@@ -1,5 +1,15 @@
 package com.example.ui.screens
 
+import com.example.ui.components.ds.SectionCard
+import com.example.ui.components.ds.StatusPill
+import com.example.ui.components.ds.ItemActionsMenu
+import com.example.ui.components.ds.ItemAction
+import com.example.ui.components.ds.InitialAvatar
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.EventBusy
+import androidx.compose.material.icons.rounded.SouthWest
+import androidx.compose.material.icons.rounded.NorthEast
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.ui.theme.FinNegative
 import com.example.ui.theme.FinPositive
 import com.example.ui.theme.FinWarning
@@ -730,226 +740,53 @@ fun RevampedSubscriptionCard(
     val nextDueDate = remember(subscription.date, subscription.recurrenceRule) {
         com.example.util.RecurrenceHelper.calculateNextDueDate(subscription.date, subscription.recurrenceRule)
     }
-    val daysUntilDue = remember(nextDueDate) {
-        com.example.util.RecurrenceHelper.daysUntil(nextDueDate)
-    }
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
+    val daysUntilDue = remember(nextDueDate) { com.example.util.RecurrenceHelper.daysUntil(nextDueDate) }
+    val dateFormatter = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
     val formattedSchedule = remember(subscription.recurrenceRule, subscription.date) {
         com.example.util.RecurrenceHelper.formatSchedule(subscription.recurrenceRule, subscription.date)
     }
-
-    // Derive avatar color and label
     val title = subscription.note ?: category?.name ?: if (isIncome) "Receivable" else "Subscription"
-    val avatarBg = when {
-        title.contains("Google", ignoreCase = true) -> Color(0xFF4285F4)
-        title.contains("YouTube", ignoreCase = true) -> Color(0xFFFF0000)
-        title.contains("Netflix", ignoreCase = true) -> Color(0xFFE50914)
-        title.contains("Spotify", ignoreCase = true) -> Color(0xFF1DB954)
-        isIncome -> FinPositive
-        else -> MaterialTheme.colorScheme.primary
+    val tone = if (isIncome) FinPositive else MaterialTheme.colorScheme.primary
+    val (dueText, dueColor) = when {
+        daysUntilDue <= 0L -> "Due today" to FinNegative
+        daysUntilDue == 1L -> "Tomorrow" to FinWarning
+        daysUntilDue <= 3L -> "In $daysUntilDue days" to FinWarning
+        else -> dateFormatter.format(nextDueDate) to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("subscription_card_${subscription.id}")
+    SectionCard(
+        onClick = onMarkPaid,
+        modifier = modifier.testTag("subscription_card_${subscription.id}"),
+        contentPadding = PaddingValues(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Top Row: Avatar + Title & Account + Amount
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(avatarBg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = title.take(2).uppercase(Locale.getDefault()),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(top = 2.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            ) {
-                                Text(
-                                    text = formattedSchedule,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-
-                            account?.let { acc ->
-                                Text(
-                                    text = "• ${acc.name}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Amount
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "${if (isIncome) "+" else "-"}${CurrencyUtils.formatCurrency(subscription.amount, currencyCode)}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isIncome) FinPositive else MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (isIncome) "Scheduled Inflow" else "Recurring Bill",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            InitialAvatar(title, color = tone)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(formattedSchedule, account?.name).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-            // Middle Row: Next Due Date & Days Countdown Pill
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "Next Due: ${dateFormatter.format(nextDueDate)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                val badgeColor = when {
-                    daysUntilDue == 0L -> FinNegative
-                    daysUntilDue <= 3L -> FinWarning
-                    else -> MaterialTheme.colorScheme.primary
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = badgeColor.copy(alpha = 0.14f)
-                ) {
-                    Text(
-                        text = when (daysUntilDue) {
-                            0L -> "Due Today"
-                            1L -> "Due Tomorrow"
-                            else -> "In $daysUntilDue days"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = badgeColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "${if (isIncome) "+" else "−"}${CurrencyUtils.formatCurrency(subscription.amount, currencyCode)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isIncome) FinPositive else MaterialTheme.colorScheme.onSurface
+                )
+                StatusPill(dueText, color = dueColor)
             }
-
-            // Bottom Row: Quick Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Schedule",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onStopRecurrence,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Stop Schedule",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                // Log cleared transaction for current cycle
-                Button(
-                    onClick = onMarkPaid,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isIncome) FinPositive else MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = if (isIncome) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isIncome) "Receive Early / Next" else "Pay Early / Next",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            ItemActionsMenu(
+                listOf(
+                    ItemAction(if (isIncome) "Receive now" else "Pay now", if (isIncome) Icons.Rounded.SouthWest else Icons.Rounded.NorthEast, onClick = onMarkPaid),
+                    ItemAction("Edit schedule", Icons.Rounded.Edit, onClick = onEdit),
+                    ItemAction("Stop schedule", Icons.Rounded.EventBusy, destructive = true, onClick = onStopRecurrence)
+                )
+            )
         }
     }
 }

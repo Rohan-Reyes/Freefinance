@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.local.entity.AccountEntity
 import com.example.ui.brand.BrandMark
 import com.example.ui.brand.Brands
+import com.example.ui.brand.InstitutionLogo
 import com.example.ui.components.ds.IconBadge
 import com.example.ui.components.ds.RowDivider
 import com.example.ui.components.ds.SectionCard
@@ -78,11 +79,13 @@ fun accountTypeIcon(type: String): ImageVector = when (type.lowercase(Locale.ROO
 @Composable
 fun AccountSymbol(account: AccountEntity, size: androidx.compose.ui.unit.Dp = 40.dp) {
     val brand = remember(account.name, account.linkedAppPackage) { Brands.detect(account.name, account.linkedAppPackage) }
-    if (brand != null) {
-        BrandMark(brand, size = size)
-    } else {
-        val tint = Color(account.color)
-        IconBadge(icon = accountTypeIcon(account.type), size = size, tint = tint, container = tint.copy(alpha = 0.16f))
+    InstitutionLogo(name = account.name, explicitPackage = account.linkedAppPackage, size = size) {
+        if (brand != null) {
+            BrandMark(brand, size = size)
+        } else {
+            val tint = Color(account.color)
+            IconBadge(icon = accountTypeIcon(account.type), size = size, tint = tint, container = tint.copy(alpha = 0.16f))
+        }
     }
 }
 

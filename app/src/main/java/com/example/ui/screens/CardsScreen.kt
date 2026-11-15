@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Image
 import com.example.ui.brand.BrandMark
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.rounded.AcUnit
@@ -8,6 +9,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import com.example.ui.brand.Brands
+import com.example.ui.brand.rememberAppLogo
 import com.example.ui.brand.BrandWordmark
 import com.example.ui.brand.NetworkMark
 import com.example.ui.brand.drawBrandPattern
@@ -1209,6 +1211,17 @@ fun RealisticPaymentCardFace(
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
             // Issuer wordmark + card type
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                val appLogo = rememberAppLogo(card.issuingBank.ifBlank { card.cardName })
+                if (appLogo != null) {
+                    Image(
+                        bitmap = appLogo,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(end = 10.dp)
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     if (brand != null) {
                         BrandWordmark(brand, fontSize = 22.sp)

@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import com.example.ui.components.ds.ItemActionsMenu
+import com.example.ui.components.ds.ItemAction
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.AddTask
+import androidx.compose.material.icons.rounded.CheckCircle
 import com.example.ui.theme.FinPositive
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -262,29 +268,20 @@ private fun ProjectCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Client: ${project.client}",
+                        text = project.client,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onEditProject) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Project",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                    ItemActionsMenu(
+                        listOf(
+                            ItemAction("Add milestone", Icons.Rounded.AddTask, onClick = onAddMilestone),
+                            ItemAction("Edit project", Icons.Rounded.Edit, onClick = onEditProject),
+                            ItemAction("Delete project", Icons.Rounded.Delete, destructive = true, onClick = onDeleteProject)
                         )
-                    }
-                    IconButton(onClick = onDeleteProject) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Project",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    )
                     IconButton(onClick = { isExpanded = !isExpanded }) {
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -387,9 +384,9 @@ private fun MilestoneItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
             .clickable(onClick = onEdit)
-            .padding(12.dp),
+            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 0.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -445,37 +442,13 @@ private fun MilestoneItemRow(
                 color = if (isPaid) FinPositive else MaterialTheme.colorScheme.onSurface
             )
 
-            Spacer(modifier = Modifier.width(4.dp))
-
-            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Edit Milestone",
-                    modifier = Modifier.size(15.dp),
-                    tint = MaterialTheme.colorScheme.primary
+            ItemActionsMenu(
+                listOfNotNull(
+                    if (!isPaid) ItemAction("Mark as paid", Icons.Rounded.CheckCircle, onClick = onMarkPaid) else null,
+                    ItemAction("Edit", Icons.Rounded.Edit, onClick = onEdit),
+                    ItemAction("Delete", Icons.Rounded.Delete, destructive = true, onClick = onDelete)
                 )
-            }
-
-            if (!isPaid) {
-                Button(
-                    onClick = onMarkPaid,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = FinPositive),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Text("Pay", fontSize = 11.sp)
-                }
-            }
-
-            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    modifier = Modifier.size(15.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            )
         }
     }
 }

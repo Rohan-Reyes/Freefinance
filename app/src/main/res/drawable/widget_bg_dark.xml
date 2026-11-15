@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#1E1E2E" />
-    <corners android:radius="20dp" />
-    <stroke
-        android:width="1dp"
-        android:color="#3A3A4C" />
+<!-- Widget surface: same deep teal as the app icon, soft hairline edge. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="315" android:startColor="#0F2027" android:centerColor="#16303A" android:endColor="#1F3D49" android:type="linear" />
+    <corners android:radius="24dp" />
+    <stroke android:width="1dp" android:color="#1AFFFFFF" />
 </shape>

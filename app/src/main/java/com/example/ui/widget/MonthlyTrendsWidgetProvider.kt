@@ -61,9 +61,9 @@ class MonthlyTrendsWidgetProvider : AppWidgetProvider() {
                         val views = RemoteViews(context.packageName, R.layout.widget_monthly_trends).apply {
                             setTextViewText(R.id.tv_trends_month_label, monthLabel)
                             setTextViewText(R.id.tv_trends_spent, CurrencyUtils.formatCurrency(currentExpense, baseCurrency))
-                            setTextViewText(R.id.tv_trends_projected, "Proj: ${CurrencyUtils.formatCompact(projected, baseCurrency)}")
-                            setTextViewText(R.id.tv_trends_delta, "Daily Run Rate: ~${CurrencyUtils.formatCurrency(dailyRate, baseCurrency)}/day")
-                            setTextViewText(R.id.tv_trends_count, "$count Cleared Transactions")
+                            setTextViewText(R.id.tv_trends_projected, "Projected ${CurrencyUtils.formatCompact(projected, baseCurrency)}")
+                            setTextViewText(R.id.tv_trends_delta, "≈ ${CurrencyUtils.formatCurrency(dailyRate, baseCurrency)} a day")
+                            setTextViewText(R.id.tv_trends_count, "$count transactions")
 
                             setOnClickPendingIntent(R.id.widget_root, pendingAppIntent)
                             setOnClickPendingIntent(R.id.btn_open_trends, pendingAppIntent)

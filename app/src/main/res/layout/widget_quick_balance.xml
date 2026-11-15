@@ -5,7 +5,8 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_dark"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingHorizontal="18dp"
+    android:paddingVertical="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,42 +14,53 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_logo" />
+
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="TOTAL NET WORTH"
-            android:textColor="#94A3B8"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium"
+            android:text="Net worth"
+            android:textColor="#B3C7CF"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/tv_accounts_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/widget_btn_pic_bg"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="2dp"
+            android:background="@drawable/widget_btn_bg"
+            android:paddingHorizontal="9dp"
+            android:paddingVertical="3dp"
             android:text="Accounts"
-            android:textColor="#38BDF8"
-            android:textSize="10sp"
-            android:textStyle="bold" />
+            android:textColor="#D6E4E9"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/tv_total_balance"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:autoSizeMaxTextSize="34sp"
+        android:autoSizeMinTextSize="18sp"
+        android:autoSizeTextType="uniform"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center_vertical"
+        android:maxLines="1"
         android:text="₱0.00"
         android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold" />
+        android:textSize="30sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -57,21 +69,25 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Tap to open Finance Tracker"
-            android:textColor="#64748B"
-            android:textSize="11sp" />
+            android:maxLines="1"
+            android:text="My Finance"
+            android:textColor="#8FA6AF"
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/btn_quick_add"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/widget_btn_accent_bg"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="5dp"
-            android:text="+ Log Entry"
-            android:textColor="#34D399"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:drawableStart="@drawable/ic_w_add"
+            android:drawablePadding="4dp"
+            android:drawableTint="#0B1F1A"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="7dp"
+            android:text="Add"
+            android:textColor="#0B1F1A"
+            android:textSize="13sp" />
     </LinearLayout>
-
 </LinearLayout>

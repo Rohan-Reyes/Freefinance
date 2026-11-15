@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import com.example.ui.components.ds.SectionCard
+import com.example.ui.components.ds.IconBadge
+import com.example.ui.components.ds.ItemActionsMenu
+import com.example.ui.components.ds.ItemAction
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Delete
 import com.example.ui.theme.FinNegative
 import com.example.ui.theme.FinPositive
 import androidx.compose.foundation.background
@@ -354,68 +360,24 @@ private fun CategoryCard(
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("category_card_${category.id}")
+    val tint = Color(category.color)
+    SectionCard(
+        onClick = onEditClick,
+        modifier = Modifier.testTag("category_card_${category.id}"),
+        contentPadding = PaddingValues(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color(category.color).copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = getCategoryIcon(category.iconResId),
-                    contentDescription = null,
-                    tint = Color(category.color),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconBadge(getCategoryIcon(category.iconResId), size = 40.dp, tint = tint, container = tint.copy(alpha = 0.16f))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = category.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = category.type,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                Text(category.type, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
-            IconButton(onClick = onEditClick) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Edit Category",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+            ItemActionsMenu(
+                listOf(
+                    ItemAction("Edit", Icons.Rounded.Edit, onClick = onEditClick),
+                    ItemAction("Delete", Icons.Rounded.Delete, destructive = true, onClick = onDeleteClick)
                 )
-            }
-
-            IconButton(onClick = onDeleteClick) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Category",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            )
         }
     }
 }

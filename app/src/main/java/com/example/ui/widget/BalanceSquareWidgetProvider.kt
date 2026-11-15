@@ -47,8 +47,8 @@ class BalanceSquareWidgetProvider : AppWidgetProvider() {
                     for (widgetId in appWidgetIds) {
                         val views = RemoteViews(context.packageName, R.layout.widget_balance_square).apply {
                             setTextViewText(R.id.tv_total_balance, formattedBalance)
-                            setTextViewText(R.id.tv_accounts_count, "$accountsCount Accs")
-                            setTextViewText(R.id.tv_sub_info, "Unified Net Worth")
+                            setTextViewText(R.id.tv_accounts_count, "$accountsCount accounts")
+                            setTextViewText(R.id.tv_sub_info, "All accounts")
 
                             setOnClickPendingIntent(R.id.widget_root, pendingAppIntent)
                             setOnClickPendingIntent(R.id.btn_quick_pic, pendingQuickPicIntent)

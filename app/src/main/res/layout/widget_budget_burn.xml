@@ -17,10 +17,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="MONTHLY BUDGET BURN"
+            android:text="Budget this month"
             android:textColor="#FFB74D"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:id="@+id/tv_budget_pct"
@@ -32,7 +32,7 @@
             android:text="0% Spent"
             android:textColor="#FFFFFF"
             android:textSize="10sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <TextView
@@ -43,7 +43,7 @@
         android:text="$0.00 Left"
         android:textColor="#FFFFFF"
         android:textSize="20sp"
-        android:textStyle="bold" />
+        android:fontFamily="sans-serif-medium" />
 
     <TextView
         android:id="@+id/tv_burn_rate"
@@ -77,10 +77,10 @@
             android:background="@drawable/widget_btn_bg"
             android:paddingHorizontal="10dp"
             android:paddingVertical="4dp"
-            android:text="Budgets →"
+            android:text="Budgets"
             android:textColor="#FFB74D"
             android:textSize="11sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
 </LinearLayout>

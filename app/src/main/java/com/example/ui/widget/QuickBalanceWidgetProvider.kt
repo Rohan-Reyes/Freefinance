@@ -46,7 +46,7 @@ class QuickBalanceWidgetProvider : AppWidgetProvider() {
                         val views = RemoteViews(context.packageName, R.layout.widget_quick_balance).apply {
                             setTextViewText(R.id.tv_total_balance, CurrencyUtils.formatCurrency(totalBalance, baseCurrency))
                             setTextViewText(R.id.tv_accounts_count, "$count ${if (count == 1) "Account" else "Accounts"}")
-                            setTextViewText(R.id.tv_sub_info, "Unified Net Worth")
+                            setTextViewText(R.id.tv_sub_info, "All accounts")
 
                             setOnClickPendingIntent(R.id.widget_root, pendingAppIntent)
                             setOnClickPendingIntent(R.id.btn_quick_add, pendingQuickAddIntent)
