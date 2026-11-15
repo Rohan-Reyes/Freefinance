@@ -64,3 +64,42 @@ export function viewPhoto(sha, title = 'Photo') {
     document.body.appendChild(w);
   });
 }
+
+// ---- full JSON backups carry the photos themselves: { "<sha256>": "<base64>" } ----
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function fromBase64(b64) {
+  const bin = atob(b64), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+/** Downloads every photo referenced by the given rows. Photos the server doesn't have are skipped. */
+export async function exportPhotos(shas) {
+  const out = {};
+  const auth = { Authorization: `Bearer ${store.auth.token}` };
+  for (const sha of new Set([...shas].filter(isSha))) {
+    try {
+      const r = await fetch(`/api/files/${sha}`, { headers: auth });
+      if (r.ok) out[sha] = toBase64(await r.arrayBuffer());
+    } catch { /* offline or missing: the record is still exported */ }
+  }
+  return out;
+}
+/** Uploads photos from a backup (verifying each hash). Returns how many are now on the server. */
+export async function importPhotos(images) {
+  let n = 0;
+  const auth = { Authorization: `Bearer ${store.auth.token}` };
+  for (const [sha, b64] of Object.entries(images || {})) {
+    if (!isSha(sha) || typeof b64 !== 'string') continue;
+    try {
+      const bytes = fromBase64(b64);
+      if ((await sha256Hex(bytes)) !== sha) continue; // corrupted entry
+      const r = await fetch(`/api/files/${sha}`, { method: 'PUT', headers: { ...auth, 'Content-Type': 'application/octet-stream' }, body: bytes });
+      if (r.ok) n++;
+    } catch { /* keep importing the rest */ }
+  }
+  return n;
+}

@@ -155,8 +155,9 @@ async function start() {
   shell();
   lock.init(enforceLock);
   await store.load();
+  applyTheme();
   let queued = false;
-  store.subscribe(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; render(); }); });
+  store.subscribe(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; applyTheme(); render(); }); });
   window.addEventListener('hashchange', () => { render(); document.getElementById('main')?.scrollTo?.(0, 0); window.scrollTo(0, 0); });
   render();
   enforceLock();

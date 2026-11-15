@@ -223,8 +223,9 @@ class Store {
       }
     }
   }
-  setPref(key, value) {
-    this.prefs = { ...this.prefs, [key]: value };
+  setPref(key, value) { this.setPrefs({ [key]: value }); }
+  setPrefs(patch) {
+    this.prefs = { ...this.prefs, ...patch };
     this.prefsTs = now();
     this.pending.set('prefs:1', { tbl: 'prefs', id: 1, ts: this.prefsTs, deleted: false });
     this.changed();

@@ -2351,7 +2351,7 @@ class DashboardViewModel(
                         paymentCardDao = db.paymentCardDao()
                     )
                     val preferencesRepository = UserPreferencesRepository(context.applicationContext)
-                    val dataSyncManager = DataSyncManager(db)
+                    val dataSyncManager = DataSyncManager(db, context.applicationContext)
                     val cloudBackupManager = CloudBackupManager()
                     return DashboardViewModel(
                         repository = repository,

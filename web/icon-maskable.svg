@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- Full-bleed Android adaptive icon (108dp canvas); the wallet sits inside the maskable safe zone. -->
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="108" y2="108">
+      <stop offset="0" stop-color="#0F2027"/><stop offset=".5" stop-color="#203A43"/><stop offset="1" stop-color="#2C5364"/>
+    </linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="54" cy="54" r="44">
+      <stop offset="0" stop-color="#00E676" stop-opacity=".125"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <path d="M14,14 A40,40 0 1,0 94,94 A40,40 0 1,0 14,14 Z" fill="url(#glow)"/>
+  <path fill="#00E676" d="M27,36 C27,32.7 29.7,30 33,30 L75,30 C78.3,30 81,32.7 81,36 L81,42 L33,42 C30.8,42 29,43.8 29,46 C29,48.2 30.8,50 33,50 L81,50 L81,72 C81,75.3 78.3,78 75,78 L33,78 C29.7,78 27,75.3 27,72 Z"/>
+  <path fill="#00B0FF" d="M63,48 L79,48 C81.2,48 83,49.8 83,52 L83,62 C83,64.2 81.2,66 79,66 L63,66 C60.8,66 59,64.2 59,62 L59,52 C59,49.8 60.8,48 63,48 Z"/>
+  <path fill="#FFFFFF" d="M71,57m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0"/>
+  <path fill="#FFFFFF" d="M43,62 L51,54 L47,54 L47,50 L57,50 L57,60 L53,60 L53,56 L45,64 Z"/>
+</svg>

@@ -47,8 +47,8 @@ code { font-size: .85em; background: var(--surface-3); padding: 1px 5px; border-
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px; }
 .brand strong { display: block; font-family: var(--display); font-size: 1.05rem; }
 .brand small { color: var(--muted); font-size: .75rem; }
-.logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 1.2rem; flex: none;
-  background: linear-gradient(135deg, #14a37f, #0b5d75); box-shadow: 0 4px 14px rgba(15, 138, 111, .35); }
+.logo { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: transparent; font-weight: 700; font-size: 1.2rem; flex: none;
+  overflow: hidden; background: #0F2027 url('icon.svg') center / cover no-repeat; box-shadow: 0 4px 14px rgba(15, 32, 39, .35); } /* same artwork as the Android launcher icon */
 .brand.big .logo { width: 46px; height: 46px; font-size: 1.5rem; }
 #nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 #nav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); font-weight: 500; font-size: .92rem; }

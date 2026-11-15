@@ -2,11 +2,11 @@
 import { store } from './store.js';
 import * as L from './logic.js';
 import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js';
-import { uploadPhoto, hydratePhotos, isSha } from './images.js';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js';
 import { BANKS, bankFor } from './banks.js';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
-  lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme,
+  lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
 } from './ui.js';
 
 // ---------------------------------------------------------------- shared helpers
@@ -883,7 +883,7 @@ const settings = {
     const s = store.status, a = store.auth;
     const rates = store.all('exchange_rates').sort((x, y) => x.from_currency.localeCompare(y.from_currency));
     if (!devicesCache) settings.loadDevices();
-    const theme = viewPrefs.get('theme', 'system');
+    const theme = themePrefs();
     return `<div class="page-head"><h1>Settings</h1></div>
     <div class="grid">
       <div class="card"><h3>Sync</h3>
@@ -892,12 +892,12 @@ const settings = {
         <div class="row"><button class="btn primary" data-action="syncNow">Sync now</button><button class="btn" data-action="resetCache">Re-download everything</button><button class="btn danger ghost" data-action="signOut">Sign out</button></div></div>
       <div class="card"><h3>Display</h3>
         <label class="field"><span>Base currency (synced to all devices)</span><select data-action-change="baseCurrency">${L.CURRENCIES.map((c) => `<option value="${c.code}" ${c.code === L.base() ? 'selected' : ''}>${c.code} — ${esc(c.name)}</option>`).join('')}</select></label>
-        <label class="field"><span>Theme mode (this browser)</span><select data-action-change="theme">${[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${v === theme ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field"><span>Theme mode (synced with your phone)</span><select data-action-change="theme">${THEME_MODES.map(([v, l]) => `<option value="${v}" ${v === theme.mode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" data-action-change="includeAssets" ${viewPrefs.get('includeAssets', false) ? 'checked' : ''}> Include assets in hero total</label>
         <label class="check"><input type="checkbox" data-action-change="hideMoney" ${viewPrefs.get('hideMoney', false) ? 'checked' : ''}> Hide amounts (privacy mask)</label>
         <a class="btn" href="#/customize">⚙ Customize dashboard cards</a></div>
-      <div class="card span2"><h3>Theme palette</h3><div class="swatches">${PALETTES.map(([k, l, d]) => `<button class="swatch ${viewPrefs.get('palette', 'EMERALD_AURORA') === k ? 'on' : ''}" data-action="palette" data-k="${k}" data-hero="${PALETTES.find((p) => p[0] === k)[3]}"><i class="pal-${k}"></i><strong>${esc(l)}</strong><small>${esc(d)}</small></button>`).join('')}</div>
-        <h3>Hero card atmosphere</h3><div class="swatches">${HERO_STYLES.map(([k, l]) => `<button class="swatch ${viewPrefs.get('hero', 'EMERALD_AURORA') === k ? 'on' : ''}" data-action="hero" data-k="${k}"><i class="hero-sw-${k}"></i><strong>${esc(l)}</strong></button>`).join('')}</div>
+      <div class="card span2"><h3>Theme palette <small class="muted">· synced with your phone</small></h3>${theme.preset === 'MATERIAL_YOU' ? '<p class="muted">Your phone uses Material You (wallpaper colours); the web shows Emerald Aurora for it.</p>' : ''}<div class="swatches">${PALETTES.map(([k, l, d]) => `<button class="swatch ${theme.preset === k ? 'on' : ''}" data-action="palette" data-k="${k}" data-hero="${PALETTES.find((p) => p[0] === k)[3]}"><i class="pal-${k}"></i><strong>${esc(l)}</strong><small>${esc(d)}</small></button>`).join('')}</div>
+        <h3>Hero card atmosphere</h3><div class="swatches">${HERO_STYLES.map(([k, l]) => `<button class="swatch ${theme.hero === k ? 'on' : ''}" data-action="hero" data-k="${k}"><i class="hero-sw-${k}"></i><strong>${esc(l)}</strong></button>`).join('')}</div>
         </div>
       <div class="card"><h3>App lock (this browser)</h3>
         ${lock.enabled ? `<p class="muted">🔒 Locked with a 4-digit PIN. Wrong PINs trigger cooldowns; 10 in a row signs this browser out.</p>
@@ -922,8 +922,8 @@ const settings = {
     try { const { api } = await import('./store.js'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
-    palette: (el) => { viewPrefs.set('palette', el.dataset.k); viewPrefs.set('hero', el.dataset.hero); applyTheme(); store.emit(); },
-    hero: (el) => { viewPrefs.set('hero', el.dataset.k); applyTheme(); store.emit(); },
+    palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
+    hero: (el) => { store.setPref('hero_background_style', el.dataset.k); applyTheme(); },
     enableLock: async () => { const pin = await choosePin(); if (!pin) return; await lock.setPin(pin); lock.setOption('cards', 1); toast('PIN lock enabled'); store.emit(); },
     changePin: async () => { if (!(await askPin({ title: 'Current PIN', sub: 'Enter your current PIN first' }))) return; const pin = await choosePin(); if (!pin) return; await lock.setPin(pin); toast('PIN changed'); },
     disableLock: async () => { if (!(await askPin({ title: 'Turn off app lock', sub: 'Enter your PIN to confirm' }))) return; lock.disable(); toast('App lock turned off'); store.emit(); },
@@ -941,7 +941,16 @@ const settings = {
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will fall back to reference rates.')) store.remove('exchange_rates', el.dataset.id); },
     revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
     changePassword: async () => { const { api } = await import('./store.js'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
-    exportJson: () => { const data = { exportedAt: Date.now(), baseCurrency: L.base(), ...Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)])) }; download(`freefinance-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), 'application/json'); },
+    exportJson: async () => {
+      toast('Preparing backup…');
+      const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));
+      const shas = [...tables.transactions.map((t) => t.proof_sha256), ...tables.receipts_inbox.map((r) => r.image_sha256)];
+      const images = await exportPhotos(shas);
+      const settings = { ...store.prefs, include_assets_in_hero: !!viewPrefs.get('includeAssets', false), hide_money: !!viewPrefs.get('hideMoney', false) };
+      const data = { version: 2, exportedAt: Date.now(), baseCurrency: L.base(), settings, ...tables, images };
+      download(`freefinance-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), 'application/json');
+      toast(`Backup exported · ${Object.keys(images).length} photo(s) included`);
+    },
     exportCsv: () => {
       const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const rows = [['Date', 'Type', 'Amount', 'Currency', 'Account', 'To account', 'Category', 'Status', 'Recurrence', 'Labels', 'Note']].concat(
@@ -951,19 +960,28 @@ const settings = {
   },
   changes: {
     baseCurrency: (el) => { store.setPref('base_currency', el.value); toast(`Base currency: ${el.value}`); },
-    theme: (el) => { viewPrefs.set('theme', el.value); applyTheme(); },
+    theme: (el) => { store.setPref('app_theme_mode', el.value); applyTheme(); },
     includeAssets: (el) => { viewPrefs.set('includeAssets', el.checked); store.emit(); },
     hideMoney: (el) => { viewPrefs.set('hideMoney', el.checked); store.emit(); },
     importFile: async (el) => {
       const file = el.files?.[0]; el.value = ''; if (!file) return;
       let parsed; try { parsed = L.parseBackup(await file.text()); } catch (e) { return toast(e.message, 'err'); }
-      const list = Object.entries(parsed.counts).filter(([, n]) => n).map(([t, n]) => `<li>${esc(t.replace(/_/g, ' '))}: <strong>${n}</strong></li>`).join('');
+      const list = Object.entries(parsed.counts).filter(([, n]) => n).map(([t, n]) => `<li>${esc(t.replace(/_/g, ' '))}: <strong>${n}</strong></li>`).join('')
+        + (parsed.photoCount ? `<li>photos: <strong>${parsed.photoCount}</strong></li>` : '')
+        + (Object.keys(parsed.settings).length ? '<li>settings (currency & theme — applied on Replace)</li>' : '');
       const mode = await modal({ title: 'Import backup', body: `<p>${parsed.fmt === 'android' ? 'Phone app backup' : 'Web export'} · ${esc(file.name)}</p><ul class="import-list">${list}</ul>
         <p class="muted"><strong>Merge</strong> adds these records alongside your current data. <strong>Replace</strong> deletes all current data on <u>every synced device</u> first (like the phone's import).</p>`,
         actions: [{ label: 'Cancel' }, { label: 'Merge', value: 'merge' }, { label: 'Replace everything', kind: 'danger', value: 'replace' }] });
       if (!mode) return;
       if (mode === 'replace' && !(await confirmDialog('Replace all data?', 'Every account, transaction and record will be deleted on all devices and replaced with the file contents.', 'Replace everything'))) return;
-      const n = L.importBackup(parsed, mode); toast(`Imported ${n} records`);
+      const photos = parsed.photoCount ? await importPhotos(parsed.images) : 0;
+      const n = L.importBackup(parsed, mode);
+      if (mode === 'replace') {
+        if (typeof parsed.settings.include_assets_in_hero === 'boolean') viewPrefs.set('includeAssets', parsed.settings.include_assets_in_hero);
+        if (typeof parsed.settings.hide_money === 'boolean') viewPrefs.set('hideMoney', parsed.settings.hide_money);
+        applyTheme();
+      }
+      toast(`Imported ${n} records${photos ? ` · ${photos} photo(s)` : ''}`);
     },
     lockTimeout: (el) => { lock.setOption('timeout', el.value); toast('Saved'); },
     lockCards: (el) => { lock.setOption('cards', el.checked ? 1 : 0); toast('Saved'); },

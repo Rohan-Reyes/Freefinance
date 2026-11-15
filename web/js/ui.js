@@ -1,5 +1,6 @@
 // UI helpers: escaping, formatting, modals/forms, toasts, small SVG charts.
 import { symbol, base } from './logic.js';
+import { store } from './store.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -74,11 +75,27 @@ export const HERO_STYLES = [
   ['EMERALD_AURORA', 'Emerald Aurora'], ['GRADIENT', 'Ocean Indigo'], ['SUNSET_GLOW', 'Sunset Glow'],
   ['MIDNIGHT_NEBULA', 'Midnight Nebula'], ['GOLDEN_LUXE', 'Golden Luxe'], ['SOLID', 'Theme Solid'],
 ];
+// Theme is synced with the phone through the shared "prefs" record, using the Android DataStore keys/values:
+//   app_theme_mode = SYSTEM | DARK | LIGHT, app_theme_preset = AppThemePreset name, hero_background_style = HeroBackgroundStyle name.
+export const THEME_MODES = [['SYSTEM', 'System'], ['LIGHT', 'Light'], ['DARK', 'Dark']];
+export const themePrefs = () => {
+  const p = store.prefs || {};
+  const mode = String(p.app_theme_mode || viewPrefs.get('theme', 'system')).toUpperCase();
+  return {
+    mode: THEME_MODES.some(([k]) => k === mode) ? mode : 'SYSTEM',
+    preset: p.app_theme_preset || viewPrefs.get('palette', 'EMERALD_AURORA'),
+    hero: p.hero_background_style || viewPrefs.get('hero', 'EMERALD_AURORA'),
+  };
+};
 export function applyTheme() {
-  const d = document.documentElement;
-  d.dataset.theme = viewPrefs.get('theme', 'system');
-  d.dataset.palette = viewPrefs.get('palette', 'EMERALD_AURORA');
-  d.dataset.hero = viewPrefs.get('hero', 'EMERALD_AURORA');
+  const d = document.documentElement, t = themePrefs();
+  d.dataset.theme = t.mode.toLowerCase();
+  // MATERIAL_YOU (wallpaper colours) only exists on Android; the web shows the default palette for it.
+  d.dataset.palette = PALETTES.some(([k]) => k === t.preset) ? t.preset : 'EMERALD_AURORA';
+  d.dataset.hero = HERO_STYLES.some(([k]) => k === t.hero) ? t.hero : 'EMERALD_AURORA';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const bg = getComputedStyle(d).getPropertyValue('--surface').trim();
+  if (meta && bg) meta.setAttribute('content', bg);
 }
 
 // ---- modal ----

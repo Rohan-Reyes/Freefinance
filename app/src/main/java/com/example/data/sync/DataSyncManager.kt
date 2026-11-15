@@ -1,8 +1,11 @@
 package com.example.data.sync
 
+import android.content.Context
+import android.util.Base64
 import androidx.room.withTransaction
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.AccountEntity
+import com.example.data.local.entity.AssetEntity
 import com.example.data.local.entity.BudgetEntity
 import com.example.data.local.entity.CategoryEntity
 import com.example.data.local.entity.DebtEntity
@@ -10,10 +13,20 @@ import com.example.data.local.entity.ExchangeRateEntity
 import com.example.data.local.entity.FreelanceProjectEntity
 import com.example.data.local.entity.MilestoneEntity
 import com.example.data.local.entity.PaymentCardEntity
+import com.example.data.local.entity.PlannedPayoutEntity
+import com.example.data.local.entity.ReceiptEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.model.CompoundingFrequency
+import com.example.data.local.model.DashboardCardType
+import com.example.data.preferences.AppThemeMode
+import com.example.data.preferences.AppThemePreset
+import com.example.data.preferences.HeroBackgroundStyle
+import com.example.data.preferences.UserPreferencesRepository
+import com.example.util.ReceiptStorageHelper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,15 +47,56 @@ data class BackupDataDTO(
     val freelanceProjects: List<FreelanceProjectEntity> = emptyList(),
     val milestones: List<MilestoneEntity> = emptyList(),
     val exchangeRates: List<ExchangeRateEntity> = emptyList(),
-    val paymentCards: List<PaymentCardEntity> = emptyList()
+    val paymentCards: List<PaymentCardEntity> = emptyList(),
+    val assets: List<AssetEntity> = emptyList(),
+    val plannedPayouts: List<PlannedPayoutEntity> = emptyList(),
+    val receipts: List<ReceiptEntity> = emptyList(),
+    /** Table keys present in the file. Tables a (v1) backup doesn't contain are left untouched on import. */
+    val presentTables: Set<String> = emptySet()
 )
 
 /**
  * DataSyncManager: Provides robust JSON serialization and deserialization for the entire
  * Room database state, with atomic transaction handling, foreign-key safe table clearing,
  * and OnConflictStrategy.REPLACE to prevent crashes.
+ *
+ * Backup format v2 (a superset of v1, which still imports):
+ *  - every Room table, including assets, plannedPayouts and receiptsInbox;
+ *  - "settings": base currency, theme, hero style, dashboard layout, privacy toggles
+ *    (app-lock PIN / biometric settings are deliberately NOT exported);
+ *  - "images": receipt and proof photos as { "<sha256>": "<base64>" }; rows point at them
+ *    with proofSha256 / imageSha256.
+ * Import also accepts the web app's export (snake_case fields, global sync ids).
+ * [context] is needed for settings and photos; without it only the records are handled.
  */
-class DataSyncManager(private val database: AppDatabase) {
+class DataSyncManager(private val database: AppDatabase, private val context: Context? = null) {
+
+    private companion object {
+        const val BACKUP_VERSION = 2
+        const val DEVICE_SPAN = 1L shl 40
+        const val MAX_PHOTO_BYTES = 15L * 1024 * 1024
+        val SHA256_RE = Regex("^[a-f0-9]{64}$")
+
+        /** Web export / sync table names -> keys used in this backup format. */
+        val TABLE_ALIASES = mapOf(
+            "freelance_projects" to "freelanceProjects",
+            "exchange_rates" to "exchangeRates",
+            "payment_cards" to "paymentCards",
+            "planned_payouts" to "plannedPayouts",
+            "receipts_inbox" to "receiptsInbox"
+        )
+        val TABLE_KEYS = listOf(
+            "categories", "accounts", "transactions", "budgets", "debts", "freelanceProjects", "milestones",
+            "exchangeRates", "paymentCards", "assets", "plannedPayouts", "receiptsInbox"
+        )
+        /** Fields holding ids of other rows (camelCase). */
+        val REF_FIELDS = setOf(
+            "parentCategoryId", "parentAccountId", "linkedAccountId", "accountId", "toAccountId", "categoryId",
+            "projectId", "targetAccountId", "paidTransactionId", "convertedTransactionId"
+        )
+        /** Booleans the web stores as 0/1. */
+        val BOOL_FIELDS = setOf("isLocked", "includeInTally", "isVirtual", "isFrozen", "includeInNetWorth")
+    }
 
     private val isoDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
     private val simpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -78,7 +132,7 @@ class DataSyncManager(private val database: AppDatabase) {
     /**
      * Serializes entire local Room database into a single standard JSON payload.
      */
-    suspend fun exportStateToJson(baseCurrency: String = "USD"): String {
+    suspend fun exportStateToJson(baseCurrency: String = "USD", includePhotos: Boolean = true): String {
         val accounts = database.accountDao().getAllAccounts().first()
         val categories = database.categoryDao().getAllCategories().first()
         val transactions = database.transactionDao().getAllTransactions().first()
@@ -88,11 +142,25 @@ class DataSyncManager(private val database: AppDatabase) {
         val milestones = database.freelanceDao().getAllMilestones().first()
         val exchangeRates = database.exchangeRateDao().getAllRates().first()
         val paymentCards = database.paymentCardDao().getAllCards().first()
+        val assets = database.assetDao().getAllAssets().first()
+        val plannedPayouts = database.plannedPayoutDao().getAllPlannedPayouts().first()
+        val receipts = database.receiptDao().getAllReceipts().first()
 
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", BACKUP_VERSION)
         root.put("exportedAt", System.currentTimeMillis())
         root.put("baseCurrency", baseCurrency)
+        root.put("settings", exportSettings(baseCurrency))
+
+        // Photos are embedded once per distinct file content and referenced by SHA-256.
+        val images = JSONObject()
+        fun attachPhoto(path: String?, obj: JSONObject, hashKey: String) {
+            if (!includePhotos || path.isNullOrBlank()) return
+            val bytes = readPhoto(path) ?: return
+            val sha = sha256Hex(bytes)
+            obj.put(hashKey, sha)
+            if (!images.has(sha)) images.put(sha, Base64.encodeToString(bytes, Base64.NO_WRAP))
+        }
 
         // 1. Categories
         val catArray = JSONArray()
@@ -160,6 +228,7 @@ class DataSyncManager(private val database: AppDatabase) {
                 if (tx.note != null) put("note", tx.note)
                 if (tx.proofImageUri != null) put("proofImageUri", tx.proofImageUri)
             }
+            attachPhoto(tx.proofImageUri, obj, "proofSha256")
             txArray.put(obj)
         }
         root.put("transactions", txArray)
@@ -281,7 +350,225 @@ class DataSyncManager(private val database: AppDatabase) {
         }
         root.put("paymentCards", cardsArray)
 
+        // 9. Assets
+        val assetArray = JSONArray()
+        assets.forEach { a ->
+            assetArray.put(JSONObject().apply {
+                put("id", a.id)
+                put("name", a.name)
+                put("category", a.category)
+                put("estimatedValue", a.estimatedValue)
+                put("purchasePrice", a.purchasePrice)
+                if (a.purchaseDate != null) put("purchaseDate", isoDateFormat.format(a.purchaseDate))
+                put("currencyCode", a.currencyCode)
+                if (a.notes != null) put("notes", a.notes)
+                put("iconName", a.iconName)
+                put("color", a.color)
+                put("includeInNetWorth", a.includeInNetWorth)
+                put("createdAt", a.createdAt)
+            })
+        }
+        root.put("assets", assetArray)
+
+        // 10. Planned payouts
+        val payoutArray = JSONArray()
+        plannedPayouts.forEach { p ->
+            payoutArray.put(JSONObject().apply {
+                put("id", p.id)
+                put("title", p.title)
+                put("amount", p.amount)
+                put("currencyCode", p.currencyCode)
+                put("dueDate", isoDateFormat.format(p.dueDate))
+                if (p.targetAccountId != null) put("targetAccountId", p.targetAccountId)
+                if (p.categoryId != null) put("categoryId", p.categoryId)
+                if (p.payeeOrVendor != null) put("payeeOrVendor", p.payeeOrVendor)
+                if (p.notes != null) put("notes", p.notes)
+                put("priority", p.priority)
+                put("status", p.status)
+                if (p.paidDate != null) put("paidDate", isoDateFormat.format(p.paidDate))
+                if (p.paidTransactionId != null) put("paidTransactionId", p.paidTransactionId)
+                put("createdAt", isoDateFormat.format(p.createdAt))
+            })
+        }
+        root.put("plannedPayouts", payoutArray)
+
+        // 11. Receipt inbox
+        val receiptArray = JSONArray()
+        receipts.forEach { r ->
+            val obj = JSONObject().apply {
+                put("id", r.id)
+                put("imagePath", r.imagePath)
+                put("capturedAt", isoDateFormat.format(r.capturedAt))
+                if (r.note != null) put("note", r.note)
+                if (r.suggestedAmount != null) put("suggestedAmount", r.suggestedAmount)
+                put("suggestedType", r.suggestedType)
+                put("status", r.status)
+                if (r.convertedTransactionId != null) put("convertedTransactionId", r.convertedTransactionId)
+            }
+            attachPhoto(r.imagePath, obj, "imageSha256")
+            receiptArray.put(obj)
+        }
+        root.put("receiptsInbox", receiptArray)
+
+        // 12. Photos
+        root.put("images", images)
+
         return root.toString(2)
+    }
+
+    /** Display/sync settings. Security settings (app-lock PIN, biometrics) are never exported. */
+    private suspend fun exportSettings(baseCurrency: String): JSONObject {
+        val out = JSONObject().put("base_currency", baseCurrency)
+        val ctx = context ?: return out
+        val prefs = UserPreferencesRepository(ctx)
+        out.put("app_theme_preset", prefs.appThemePreset.first().name)
+        out.put("app_theme_mode", prefs.appThemeMode.first().name)
+        out.put("hero_background_style", prefs.heroBackgroundStyle.first().name)
+        out.put("include_assets_in_hero", prefs.includeAssetsInHero.first())
+        out.put("hide_money", prefs.hideMoney.first())
+        out.put("active_dashboard_cards", JSONArray(prefs.activeDashboardCards.first().map { it.name }))
+        out.put("dashboard_card_order", prefs.dashboardCardOrder.first().joinToString(",") { it.name })
+        return out
+    }
+
+    private fun readPhoto(path: String): ByteArray? = try {
+        if (path.startsWith("content://")) {
+            context?.contentResolver?.openInputStream(android.net.Uri.parse(path))?.use { input ->
+                val bytes = input.readBytes()
+                if (bytes.size > MAX_PHOTO_BYTES) null else bytes
+            }
+        } else {
+            val file = File(path)
+            if (file.isFile && file.length() in 1..MAX_PHOTO_BYTES) file.readBytes() else null
+        }
+    } catch (_: Exception) {
+        null // a missing/unreadable photo never blocks the backup
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    // ---------------------------------------------------------------- import helpers
+
+    private fun camelCase(key: String): String {
+        if (!key.contains('_')) return key
+        val parts = key.split('_').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return key
+        return parts.first() + parts.drop(1).joinToString("") { p -> p.replaceFirstChar { it.uppercaseChar() } }
+    }
+
+    /**
+     * Makes web exports look like this app's format: table keys, camelCase fields, 0/1 booleans,
+     * labels as arrays, and global sync ids (deviceNo * 2^40 + localId) turned into local ids the
+     * same way server sync does (this device's rows -> positive local id, others -> -globalId).
+     */
+    private fun normalizeBackup(root: JSONObject): Boolean {
+        var fromWeb = false
+        for ((alias, key) in TABLE_ALIASES) {
+            if (!root.has(key) && root.has(alias)) { root.put(key, root.get(alias)); fromWeb = true }
+        }
+        val deviceNo = context?.getSharedPreferences("ff_server_sync", Context.MODE_PRIVATE)?.getLong("device_no", 0L) ?: 0L
+        fun mapId(v: Long): Long = when {
+            v < DEVICE_SPAN -> v
+            deviceNo > 0 && v / DEVICE_SPAN == deviceNo -> v - deviceNo * DEVICE_SPAN
+            else -> -v
+        }
+        for (key in TABLE_KEYS) {
+            val arr = root.optJSONArray(key) ?: continue
+            val out = JSONArray()
+            for (i in 0 until arr.length()) {
+                val src = arr.optJSONObject(i) ?: continue
+                val obj = JSONObject()
+                val keys = src.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val ck = camelCase(k)
+                    if (k != ck) fromWeb = true
+                    if (k == ck || !obj.has(ck)) obj.put(ck, src.get(k))
+                }
+                for (f in BOOL_FIELDS) {
+                    val v = obj.opt(f)
+                    if (v is Number) obj.put(f, v.toInt() != 0)
+                }
+                val labels = obj.opt("labels")
+                if (labels is String) {
+                    obj.put("labels", try { JSONArray(labels) } catch (_: Exception) {
+                        JSONArray(labels.split(',').map { it.trim() }.filter { it.isNotEmpty() })
+                    })
+                }
+                for (f in REF_FIELDS + "id") {
+                    val v = obj.opt(f)
+                    if (v is Number) obj.put(f, mapId(v.toLong()))
+                }
+                out.put(obj)
+            }
+            root.put(key, out)
+        }
+        return fromWeb
+    }
+
+    /** Writes the backup's photos into the receipts folder and points rows at them. Returns photos restored. */
+    private fun restorePhotos(root: JSONObject): Int {
+        val images = root.optJSONObject("images") ?: return 0
+        val ctx = context ?: return 0
+        val dir = ReceiptStorageHelper.getReceiptsDir(ctx)
+        val written = HashMap<String, String>()
+        val shas = images.keys()
+        while (shas.hasNext()) {
+            val sha = shas.next()
+            if (!SHA256_RE.matches(sha)) continue
+            try {
+                // Same file name the server sync uses, so a synced copy of the photo is reused.
+                val target = File(dir, "SYNC_$sha.jpg")
+                if (!target.isFile) {
+                    val bytes = Base64.decode(images.getString(sha), Base64.DEFAULT)
+                    if (sha256Hex(bytes) != sha) continue
+                    val tmp = File(dir, "SYNC_$sha.part")
+                    tmp.writeBytes(bytes)
+                    if (!tmp.renameTo(target)) { tmp.delete(); continue }
+                }
+                written[sha] = target.absolutePath
+            } catch (_: Exception) {
+                // skip a corrupted photo, keep the record
+            }
+        }
+        fun repoint(tableKey: String, hashKey: String, pathKey: String) {
+            val arr = root.optJSONArray(tableKey) ?: return
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                written[obj.optString(hashKey, "")]?.let { obj.put(pathKey, it) }
+            }
+        }
+        repoint("transactions", "proofSha256", "proofImageUri")
+        repoint("receiptsInbox", "imageSha256", "imagePath")
+        return written.size
+    }
+
+    /** Restores display settings (v2 backups); a v1 backup only carries the base currency. */
+    private suspend fun restoreSettings(root: JSONObject) {
+        val ctx = context ?: return
+        val prefs = UserPreferencesRepository(ctx)
+        val s = root.optJSONObject("settings") ?: JSONObject()
+        fun str(k: String): String? = if (s.has(k) && !s.isNull(k)) s.optString(k, "").takeIf { it.isNotBlank() } else null
+        fun bool(k: String): Boolean? = when (val v = s.opt(k)) {
+            is Boolean -> v
+            is Number -> v.toInt() != 0
+            else -> null
+        }
+        (str("base_currency") ?: root.optString("baseCurrency", "").takeIf { it.isNotBlank() })?.let { prefs.setBaseCurrency(it) }
+        str("app_theme_preset")?.let { v -> AppThemePreset.entries.find { it.name == v }?.let { prefs.setAppThemePreset(it) } }
+        str("app_theme_mode")?.let { v -> AppThemeMode.entries.find { it.name == v.uppercase() }?.let { prefs.setAppThemeMode(it) } }
+        str("hero_background_style")?.let { v -> HeroBackgroundStyle.entries.find { it.name == v }?.let { prefs.setHeroBackgroundStyle(it) } }
+        bool("include_assets_in_hero")?.let { prefs.setIncludeAssetsInHero(it) }
+        bool("hide_money")?.let { prefs.setHideMoney(it) }
+        s.optJSONArray("active_dashboard_cards")?.let { arr ->
+            val cards = (0 until arr.length()).mapNotNull { DashboardCardType.fromString(arr.optString(it)) }.toSet()
+            if (cards.isNotEmpty()) prefs.setActiveCards(cards)
+        }
+        str("dashboard_card_order")?.let { order ->
+            val list = order.split(',').mapNotNull { DashboardCardType.fromString(it.trim()) }
+            if (list.isNotEmpty()) prefs.setCardOrder(list)
+        }
     }
 
     /**
@@ -289,6 +576,11 @@ class DataSyncManager(private val database: AppDatabase) {
      */
     fun parseJsonToDTO(jsonString: String): BackupDataDTO {
         val root = JSONObject(jsonString)
+        normalizeBackup(root)
+        return parseRoot(root)
+    }
+
+    private fun parseRoot(root: JSONObject): BackupDataDTO {
         val version = root.optInt("version", 1)
         val exportedAt = root.optLong("exportedAt", System.currentTimeMillis())
         val baseCurrency = root.optString("baseCurrency", "USD")
@@ -564,6 +856,88 @@ class DataSyncManager(private val database: AppDatabase) {
             }
         }
 
+        // 9. Assets
+        val assets = mutableListOf<AssetEntity>()
+        root.optJSONArray("assets")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                try {
+                    val obj = arr.getJSONObject(i)
+                    assets.add(
+                        AssetEntity(
+                            id = obj.optLong("id", 0),
+                            name = obj.optString("name", "Asset"),
+                            category = obj.optString("category", "Other"),
+                            estimatedValue = obj.optDouble("estimatedValue", 0.0),
+                            purchasePrice = obj.optDouble("purchasePrice", 0.0),
+                            purchaseDate = parseNullableDate(obj.opt("purchaseDate")),
+                            currencyCode = obj.optString("currencyCode", "USD").uppercase(),
+                            notes = obj.optString("notes").takeIf { obj.has("notes") && !obj.isNull("notes") },
+                            iconName = obj.optString("iconName", "ic_asset"),
+                            color = obj.optInt("color", -16738120),
+                            includeInNetWorth = obj.optBoolean("includeInNetWorth", true),
+                            createdAt = parseDate(obj.opt("createdAt")).time
+                        )
+                    )
+                } catch (_: Exception) {
+                    // skip malformed item
+                }
+            }
+        }
+
+        // 10. Planned payouts
+        val plannedPayouts = mutableListOf<PlannedPayoutEntity>()
+        root.optJSONArray("plannedPayouts")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                try {
+                    val obj = arr.getJSONObject(i)
+                    plannedPayouts.add(
+                        PlannedPayoutEntity(
+                            id = obj.optLong("id", 0),
+                            title = obj.optString("title", "Payout"),
+                            amount = obj.optDouble("amount", 0.0),
+                            currencyCode = obj.optString("currencyCode", "PHP").uppercase(),
+                            dueDate = parseDate(obj.opt("dueDate")),
+                            targetAccountId = if (obj.has("targetAccountId") && !obj.isNull("targetAccountId")) obj.getLong("targetAccountId") else null,
+                            categoryId = if (obj.has("categoryId") && !obj.isNull("categoryId")) obj.getLong("categoryId") else null,
+                            payeeOrVendor = obj.optString("payeeOrVendor").takeIf { obj.has("payeeOrVendor") && !obj.isNull("payeeOrVendor") },
+                            notes = obj.optString("notes").takeIf { obj.has("notes") && !obj.isNull("notes") },
+                            priority = obj.optString("priority", "NORMAL"),
+                            status = obj.optString("status", "PENDING"),
+                            paidDate = parseNullableDate(obj.opt("paidDate")),
+                            paidTransactionId = if (obj.has("paidTransactionId") && !obj.isNull("paidTransactionId")) obj.getLong("paidTransactionId") else null,
+                            createdAt = parseDate(obj.opt("createdAt"))
+                        )
+                    )
+                } catch (_: Exception) {
+                    // skip malformed item
+                }
+            }
+        }
+
+        // 11. Receipt inbox
+        val receipts = mutableListOf<ReceiptEntity>()
+        root.optJSONArray("receiptsInbox")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                try {
+                    val obj = arr.getJSONObject(i)
+                    receipts.add(
+                        ReceiptEntity(
+                            id = obj.optLong("id", 0),
+                            imagePath = if (obj.isNull("imagePath")) "" else obj.optString("imagePath", ""),
+                            capturedAt = parseDate(obj.opt("capturedAt")),
+                            note = obj.optString("note").takeIf { obj.has("note") && !obj.isNull("note") },
+                            suggestedAmount = if (obj.has("suggestedAmount") && !obj.isNull("suggestedAmount")) obj.getDouble("suggestedAmount") else null,
+                            suggestedType = obj.optString("suggestedType", "Expense"),
+                            status = obj.optString("status", "PENDING"),
+                            convertedTransactionId = if (obj.has("convertedTransactionId") && !obj.isNull("convertedTransactionId")) obj.getLong("convertedTransactionId") else null
+                        )
+                    )
+                } catch (_: Exception) {
+                    // skip malformed item
+                }
+            }
+        }
+
         return BackupDataDTO(
             version = version,
             exportedAt = exportedAt,
@@ -576,7 +950,11 @@ class DataSyncManager(private val database: AppDatabase) {
             freelanceProjects = projects,
             milestones = milestones,
             exchangeRates = exchangeRates,
-            paymentCards = paymentCards
+            paymentCards = paymentCards,
+            assets = assets,
+            plannedPayouts = plannedPayouts,
+            receipts = receipts,
+            presentTables = TABLE_KEYS.filter { root.optJSONArray(it) != null }.toSet()
         )
     }
 
@@ -591,7 +969,10 @@ class DataSyncManager(private val database: AppDatabase) {
                 return Result.failure(IllegalArgumentException("Import JSON cannot be empty"))
             }
 
-            val dto = parseJsonToDTO(jsonString)
+            val root = JSONObject(jsonString)
+            val fromWeb = normalizeBackup(root)
+            restorePhotos(root) // files first, outside the DB transaction
+            val dto = parseRoot(root)
 
             database.withTransaction {
                 val db = database.openHelper.writableDatabase
@@ -609,6 +990,10 @@ class DataSyncManager(private val database: AppDatabase) {
                     db.execSQL("DELETE FROM payment_cards")
                     db.execSQL("DELETE FROM accounts")
                     db.execSQL("DELETE FROM categories")
+                    // v2 tables: only replaced when the backup contains them (v1 files leave them as they are)
+                    if ("assets" in dto.presentTables) db.execSQL("DELETE FROM assets")
+                    if ("plannedPayouts" in dto.presentTables) db.execSQL("DELETE FROM planned_payouts")
+                    if ("receiptsInbox" in dto.presentTables) db.execSQL("DELETE FROM receipts_inbox")
 
                     // Insert parent entities first, followed by dependent children
                     if (dto.categories.isNotEmpty()) {
@@ -646,15 +1031,24 @@ class DataSyncManager(private val database: AppDatabase) {
                     if (dto.transactions.isNotEmpty()) {
                         database.transactionDao().insertTransactions(dto.transactions)
                     }
+
+                    dto.assets.forEach { database.assetDao().insertAsset(it) }
+                    dto.plannedPayouts.forEach { database.plannedPayoutDao().insert(it) }
+                    dto.receipts.forEach { database.receiptDao().insertReceipt(it) }
                 } finally {
                     // Always re-enable foreign keys
                     db.execSQL("PRAGMA foreign_keys = ON")
                 }
             }
 
+            // The web app derives balances on the fly, so its stored current_balance can be stale.
+            if (fromWeb) try { database.accountDao().recalculateAllAccountBalances() } catch (_: Exception) { }
+            restoreSettings(root)
+
             val totalImported = dto.categories.size + dto.accounts.size + dto.transactions.size +
                     dto.budgets.size + dto.debts.size + dto.freelanceProjects.size +
-                    dto.milestones.size + dto.exchangeRates.size + dto.paymentCards.size
+                    dto.milestones.size + dto.exchangeRates.size + dto.paymentCards.size +
+                    dto.assets.size + dto.plannedPayouts.size + dto.receipts.size
 
             Result.success(totalImported)
         } catch (e: Exception) {

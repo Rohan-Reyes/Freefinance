@@ -433,6 +433,10 @@ const REFS = { account_id: 'accounts', to_account_id: 'accounts', parent_account
   paid_transaction_id: 'transactions', converted_transaction_id: 'transactions' };
 const DATE_COLS = new Set(['date', 'start_date', 'end_date', 'due_date', 'created_at', 'expected_date', 'paid_at', 'locked_until', 'last_updated', 'purchase_date', 'paid_date', 'captured_at']);
 const snake = (k) => k.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
+// Photo hashes aren't Room columns but are part of synced rows (see SYNC.md).
+const EXTRA_COLS = new Set(['proof_sha256', 'image_sha256']);
+// Settings shared through the synced "prefs" record (Android DataStore keys).
+export const SYNCED_PREF_KEYS = ['base_currency', 'app_theme_preset', 'app_theme_mode', 'hero_background_style'];
 
 export function parseBackup(text) {
   let root;
@@ -448,7 +452,7 @@ export function parseBackup(text) {
       const row = {};
       for (const [k, v] of Object.entries(raw)) {
         const col = SCHEMA_KEYS[tbl].has(k) ? k : snake(k);
-        if (col !== 'id' && !SCHEMA_KEYS[tbl].has(col)) continue;
+        if (col !== 'id' && !SCHEMA_KEYS[tbl].has(col) && !EXTRA_COLS.has(col)) continue;
         if (col !== k) fmt = 'android';
         let x = v;
         if (typeof x === 'boolean') x = x ? 1 : 0;
@@ -462,7 +466,9 @@ export function parseBackup(text) {
   const counts = Object.fromEntries(Object.entries(out).map(([t, r]) => [t, r.length]));
   if (!Object.values(counts).some((n) => n > 0)) throw new Error('The file contains no records');
   const currency = typeof root.baseCurrency === 'string' ? root.baseCurrency : null;
-  return { tables: out, counts, fmt, currency };
+  const settings = root.settings && typeof root.settings === 'object' && !Array.isArray(root.settings) ? root.settings : {};
+  const images = root.images && typeof root.images === 'object' && !Array.isArray(root.images) ? root.images : {};
+  return { tables: out, counts, fmt, currency, settings, images, photoCount: Object.keys(images).length };
 }
 let SCHEMA_KEYS = {};
 export function initSchemaKeys(SCHEMA) { SCHEMA_KEYS = Object.fromEntries(Object.entries(SCHEMA).map(([t, f]) => [t, new Set(Object.keys(f()))])); }
@@ -483,7 +489,12 @@ export function importBackup(parsed, mode) {
       store.put(t, row); n++;
     }
   }
-  if (parsed.currency && mode === 'replace') store.setPref('base_currency', parsed.currency);
+  if (mode === 'replace') {
+    const prefs = {};
+    for (const k of SYNCED_PREF_KEYS) if (typeof parsed.settings?.[k] === 'string' && parsed.settings[k]) prefs[k] = parsed.settings[k];
+    if (!prefs.base_currency && parsed.currency) prefs.base_currency = parsed.currency;
+    if (Object.keys(prefs).length) store.setPrefs(prefs);
+  }
   return n;
 }
 

@@ -8,6 +8,9 @@ import androidx.room.InvalidationTracker
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteStatement
 import com.example.data.local.AppDatabase
+import com.example.data.preferences.AppThemeMode
+import com.example.data.preferences.AppThemePreset
+import com.example.data.preferences.HeroBackgroundStyle
 import com.example.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +20,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -84,6 +90,13 @@ class ServerSyncManager private constructor(context: Context) {
         private const val AUTO_SYNC_INTERVAL_MS = 45_000L
         private const val CHANGE_DEBOUNCE_MS = 4_000L
 
+        /** Settings shared through the "prefs" record (same keys as the Android DataStore and the web app). */
+        private const val PREF_CURRENCY = "base_currency"
+        private const val PREF_THEME_PRESET = "app_theme_preset"
+        private const val PREF_THEME_MODE = "app_theme_mode"
+        private const val PREF_HERO_STYLE = "hero_background_style"
+        private val SYNCED_PREF_KEYS = listOf(PREF_CURRENCY, PREF_THEME_PRESET, PREF_THEME_MODE, PREF_HERO_STYLE)
+
         /** Synced Room tables and the columns in each that hold row ids of other synced rows. */
         private val SYNCED_TABLES: Map<String, List<String>> = linkedMapOf(
             "categories" to listOf("parent_category_id"),
@@ -142,21 +155,30 @@ class ServerSyncManager private constructor(context: Context) {
 
     private var autoSyncJob: Job? = null
     private var debounceJob: Job? = null
+    private var prefsWatchJob: Job? = null
     private var observerRegistered = false
+    @Volatile private var inForeground = false
     private val changeObserver = object : InvalidationTracker.Observer(SYNCED_TABLES.keys.toTypedArray()) {
         override fun onInvalidated(tables: Set<String>) {
-            if (!isReady()) return
-            debounceJob?.cancel()
-            debounceJob = scope.launch {
-                delay(CHANGE_DEBOUNCE_MS)
-                syncNowQuietly()
-            }
+            scheduleDebouncedSync()
+        }
+    }
+
+    private fun scheduleDebouncedSync() {
+        if (!isReady()) return
+        debounceJob?.cancel()
+        debounceJob = scope.launch {
+            delay(CHANGE_DEBOUNCE_MS)
+            syncNowQuietly()
         }
     }
 
     // ------------------------------------------------------------------
     // Public API
     // ------------------------------------------------------------------
+
+    /** True when signed in and the first sync has been set up (used by the background job). */
+    val isSyncEnabled: Boolean get() = isReady()
 
     /** Signs in (or re-signs in, keeping this device's number). Does not sync yet. */
     suspend fun signIn(serverUrl: String, username: String, password: String): ServerSignInInfo =
@@ -200,9 +222,9 @@ class ServerSyncManager private constructor(context: Context) {
                 db.execSQL("INSERT OR REPLACE INTO ff_sync_log(tbl, row_id, op, ts) SELECT '$table', id, 'U', $NOW_MS_SQL FROM `$table`")
             }
         })
-        sp.edit().putBoolean("initialized", true).putLong("cursor", 0L).remove("prefs_synced_currency").apply()
+        sp.edit().putBoolean("initialized", true).putLong("cursor", 0L).remove("prefs_synced_json").apply()
         startObserving()
-        syncNow()
+        try { syncNow() } finally { startAutoSync() }
     }
 
     /** First sync when the server already has data: replaces this device's data with the server's. */
@@ -218,16 +240,17 @@ class ServerSyncManager private constructor(context: Context) {
             db.execSQL("DELETE FROM ff_sync_log")
             setApplying(db, false)
         })
-        // Don't push this device's (default) currency over the server's; the pull will set it.
+        // Don't push this device's (default) currency/theme over the server's; the pull will set them.
         sp.edit().putBoolean("initialized", true).putLong("cursor", 0L)
-            .putString("prefs_synced_currency", userPrefs.baseCurrency.first()).apply()
+            .putString("prefs_synced_json", localSyncedPrefs().toString()).apply()
         startObserving()
-        syncNow()
+        try { syncNow() } finally { startAutoSync() }
     }
 
     /** Signs out: stops syncing and removes triggers. Local data stays on the device. */
     suspend fun signOut() = withContext(Dispatchers.IO) {
         stopAutoSync()
+        ServerSyncJobService.cancel(appContext)
         stopObserving()
         removeTriggers()
         // Keep device_no so signing in again reuses this device's id range.
@@ -268,11 +291,30 @@ class ServerSyncManager private constructor(context: Context) {
 
     /** Call from Activity.onResume. */
     fun onAppForeground() {
+        inForeground = true
         if (!isReady()) return
         scope.launch {
             try { installTriggers() } catch (_: Exception) { }
             startObserving()
         }
+        startAutoSync()
+    }
+
+    /** Call from Activity.onPause. */
+    fun onAppBackground() {
+        inForeground = false
+        stopAutoSync()
+        syncNowQuietly() // flush anything typed just before leaving
+    }
+
+    /**
+     * Auto sync: every [AUTO_SYNC_INTERVAL_MS] while the app is open (plus a few seconds after any
+     * change), and about every 15 minutes in the background through [ServerSyncJobService].
+     */
+    private fun startAutoSync() {
+        if (!isReady()) return
+        ServerSyncJobService.schedule(appContext)
+        if (!inForeground) return
         autoSyncJob?.cancel()
         autoSyncJob = scope.launch {
             while (isActive) {
@@ -280,12 +322,6 @@ class ServerSyncManager private constructor(context: Context) {
                 delay(AUTO_SYNC_INTERVAL_MS)
             }
         }
-    }
-
-    /** Call from Activity.onPause. */
-    fun onAppBackground() {
-        stopAutoSync()
-        syncNowQuietly() // flush anything typed just before leaving
     }
 
     // ------------------------------------------------------------------
@@ -361,14 +397,40 @@ class ServerSyncManager private constructor(context: Context) {
         }
     }
 
+    /** This device's values for the synced settings, in a fixed key order (so snapshots compare as strings). */
+    private suspend fun localSyncedPrefs(): JSONObject = JSONObject()
+        .put(PREF_CURRENCY, userPrefs.baseCurrency.first())
+        .put(PREF_THEME_PRESET, userPrefs.appThemePreset.first().name)
+        .put(PREF_THEME_MODE, userPrefs.appThemeMode.first().name)
+        .put(PREF_HERO_STYLE, userPrefs.heroBackgroundStyle.first().name)
+
+    /** Pushes the synced settings when they differ from what the server last had. */
     private suspend fun pushPrefsIfChanged(base: String, token: String) {
-        val currency = userPrefs.baseCurrency.first()
-        if (currency == sp.getString("prefs_synced_currency", null)) return
+        val local = localSyncedPrefs()
+        if (local.toString() == sp.getString("prefs_synced_json", null)) return
         val change = JSONObject()
             .put("tbl", PREFS_TABLE).put("id", PREFS_ROW_ID).put("ts", System.currentTimeMillis())
-            .put("data", JSONObject().put("base_currency", currency))
+            .put("data", local)
         request(base, "POST", "/api/sync/push", JSONObject().put("changes", JSONArray().put(change)), token)
-        sp.edit().putString("prefs_synced_currency", currency).apply()
+        sp.edit().putString("prefs_synced_json", local.toString()).apply()
+    }
+
+    /**
+     * Applies settings from the server's prefs record. Unknown or missing values are ignored; the
+     * snapshot records what the server had, so a setting it lacks is pushed from this device next time.
+     */
+    private suspend fun applyRemotePrefs(data: JSONObject) {
+        fun str(k: String): String? = if (data.has(k) && !data.isNull(k)) data.optString(k, "").takeIf { it.isNotBlank() } else null
+        str(PREF_CURRENCY)?.let { userPrefs.setBaseCurrency(it) }
+        str(PREF_THEME_PRESET)?.let { v -> AppThemePreset.entries.find { it.name == v }?.let { userPrefs.setAppThemePreset(it) } }
+        str(PREF_THEME_MODE)?.let { v -> AppThemeMode.entries.find { it.name == v.uppercase() }?.let { userPrefs.setAppThemeMode(it) } }
+        str(PREF_HERO_STYLE)?.let { v -> HeroBackgroundStyle.entries.find { it.name == v }?.let { userPrefs.setHeroBackgroundStyle(it) } }
+        val snapshot = JSONObject()
+        for (k in SYNCED_PREF_KEYS) {
+            val v = str(k)?.let { if (k == PREF_THEME_MODE || k == PREF_CURRENCY) it.uppercase().trim() else it }
+            snapshot.put(k, v ?: JSONObject.NULL)
+        }
+        sp.edit().putString("prefs_synced_json", snapshot.toString()).apply()
     }
 
     // ------------------------------------------------------------------
@@ -386,12 +448,9 @@ class ServerSyncManager private constructor(context: Context) {
             val records = res.getJSONArray("records")
             if (records.length() > 0) {
                 val images = prefetchImages(base, token, records) // network happens outside the DB transaction
-                val (changed, remoteCurrency) = applyRemote(records, images)
+                val (changed, remotePrefs) = applyRemote(records, images)
                 if (changed) appliedAny = true
-                if (remoteCurrency != null) {
-                    userPrefs.setBaseCurrency(remoteCurrency)
-                    sp.edit().putString("prefs_synced_currency", remoteCurrency).apply()
-                }
+                if (remotePrefs != null) applyRemotePrefs(remotePrefs)
             }
             cursor = res.getLong("cursor")
             sp.edit().putLong("cursor", cursor).apply()
@@ -405,11 +464,11 @@ class ServerSyncManager private constructor(context: Context) {
 
     /**
      * Applies a batch of server records in one transaction.
-     * Returns (any row changed, base currency from the server if it was in the batch).
+     * Returns (any row changed, the server's synced settings if they were in the batch).
      */
-    private fun applyRemote(records: JSONArray, images: Map<String, String>): Pair<Boolean, String?> {
+    private fun applyRemote(records: JSONArray, images: Map<String, String>): Pair<Boolean, JSONObject?> {
         var changed = false
-        var remoteCurrency: String? = null
+        var remotePrefs: JSONObject? = null
         database.runInTransaction(Runnable {
             val db = database.openHelper.writableDatabase
             setApplying(db, true)
@@ -419,9 +478,7 @@ class ServerSyncManager private constructor(context: Context) {
                 val r = records.getJSONObject(i)
                 val table = r.getString("tbl")
                 if (table == PREFS_TABLE) {
-                    if (!r.optBoolean("deleted", false)) {
-                        remoteCurrency = r.optJSONObject("data")?.optString("base_currency")?.takeIf { it.isNotBlank() }
-                    }
+                    if (!r.optBoolean("deleted", false)) remotePrefs = r.optJSONObject("data")
                     continue
                 }
                 val fkCols = SYNCED_TABLES[table] ?: continue
@@ -453,7 +510,7 @@ class ServerSyncManager private constructor(context: Context) {
             repairForeignKeys(db)
             setApplying(db, false)
         })
-        return Pair(changed, remoteCurrency)
+        return Pair(changed, remotePrefs)
     }
 
     private fun upsertRow(
@@ -801,6 +858,14 @@ class ServerSyncManager private constructor(context: Context) {
     }
 
     private fun startObserving() {
+        if (prefsWatchJob?.isActive != true) {
+            // A settings change (currency, theme) syncs a few seconds later, like a data change.
+            prefsWatchJob = scope.launch {
+                combine(userPrefs.baseCurrency, userPrefs.appThemePreset, userPrefs.appThemeMode, userPrefs.heroBackgroundStyle) { a, b, c, d -> listOf<Any>(a, b, c, d) }
+                    .distinctUntilChanged().drop(1)
+                    .collect { scheduleDebouncedSync() }
+            }
+        }
         if (observerRegistered) return
         try {
             database.invalidationTracker.addObserver(changeObserver)
@@ -809,6 +874,8 @@ class ServerSyncManager private constructor(context: Context) {
     }
 
     private fun stopObserving() {
+        prefsWatchJob?.cancel()
+        prefsWatchJob = null
         if (!observerRegistered) return
         try { database.invalidationTracker.removeObserver(changeObserver) } catch (_: Exception) { }
         observerRegistered = false

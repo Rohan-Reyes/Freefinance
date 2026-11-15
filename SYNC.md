@@ -39,13 +39,27 @@ Put it behind HTTPS (Cloudflare Tunnel, Tailscale serve, nginx…): Android bloc
   cleared and rows with a missing required parent are dropped instead of failing the whole sync.
 * **First sign-in on a phone:** if the server is empty the phone uploads its data; if the phone is empty
   it downloads; if both have data the user is asked to replace the phone's data with the server's.
-* **Synced settings:** base currency. Theme, privacy mask, etc. stay per device.
-* **Not synced:** receipt/proof photos (they stay on the phone; their details sync).
+* **Synced settings:** base currency, theme palette, light/dark mode and hero style, in the `prefs` record
+  (`base_currency`, `app_theme_preset`, `app_theme_mode`, `hero_background_style`, same values as the Android
+  DataStore). The web shows Emerald Aurora for Android-only *Material You*. Privacy mask and app lock stay per device.
+* **Photos:** receipt/proof photos are uploaded content-addressed (`image_sha256` / `proof_sha256`) and downloaded
+  by the other devices.
+* **Auto sync (Android):** a few seconds after any data or settings change, every 45 s while the app is open, and
+  about every 15 minutes in the background (`ServerSyncJobService`, platform JobScheduler, needs a network).
+  The web app syncs after each change, every 20 s and when the tab regains focus.
+
+## JSON backup (export / import)
+
+Both apps export one JSON file with everything: all tables (including assets, planned payouts and the receipt
+inbox), `settings` (currency, theme, dashboard layout; never the app-lock PIN) and `images`
+(`{ "<sha256>": "<base64>" }`, referenced by `proofSha256` / `imageSha256`). Older v1 files still import.
+Each app imports the other's export: the phone maps the web's global ids the same way sync does.
 
 ## Building the APK
 
 No extra dependencies were added (OkHttp, coroutines and Room were already in the project).
-The manifest now declares `android.permission.INTERNET`, which the app previously lacked.
+The manifest declares `android.permission.INTERNET` and `RECEIVE_BOOT_COMPLETED` (keeps the background sync job
+scheduled after a reboot).
 
 ```bash
 ./gradlew assembleDebug
