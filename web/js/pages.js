@@ -1,14 +1,14 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
-import { store } from './store.js?v=12';
-import * as L from './logic.js?v=12';
-import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=12';
-import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=12';
-import { BANKS, bankFor } from './banks.js?v=12';
-import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=12';
+import { store } from './store.js?v=13';
+import * as L from './logic.js?v=13';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=13';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=13';
+import { BANKS, bankFor } from './banks.js?v=13';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=13';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
-} from './ui.js?v=12';
+} from './ui.js?v=13';
 
 // ---------------------------------------------------------------- shared helpers
 const sortByName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
@@ -201,6 +201,8 @@ const dashboard = {
   render() {
     const inclAssets = viewPrefs.get('includeAssets', false), nw = L.netWorth(inclAssets), b = L.base();
     const { order, hidden } = dashLayout(), byId = Object.fromEntries(DASH_CARDS.map((c) => [c[0], c]));
+    if (!serverInfo && String(store.auth?.username || '').toLowerCase() === 'rohan') settings.loadServerInfo();
+    const inv = serverInfo?.me?.admin ? inviteCard() : '';
     return `
     <section class="hero">
       <div><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'balance'} · ${esc(b)}</span>
@@ -215,13 +217,15 @@ const dashboard = {
         <a class="btn" href="#/customize" title="Customize dashboard">⚙ Customize</a>
       </div>
     </section>
-    <div class="grid">${order.filter((id) => !hidden.has(id)).map((id) => `<div class="card ${byId[id][4] ? 'span2' : ''}" data-card="${id}">${byId[id][3]()}</div>`).join('') || empty('All cards are hidden — use Customize to show some.')}</div>`;
+    <div class="grid">${inv}${order.filter((id) => !hidden.has(id)).map((id) => `<div class="card ${byId[id][4] ? 'span2' : ''}" data-card="${id}">${byId[id][3]()}</div>`).join('') || empty('All cards are hidden — use Customize to show some.')}</div>`;
   },
   actions: {
     quick: (el) => openTxForm(null, { type: el.dataset.type }),
     toggleAssets: (el) => { viewPrefs.set('includeAssets', el.checked); store.emit(); },
     editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
     undo: () => { undo.perform(); store.emit(); },
+    newInvite: () => settings.actions.newInvite(),
+    closeInvite: () => settings.actions.closeInvite(),
   },
 };
 
@@ -883,6 +887,13 @@ const receipts = {
 // ---------------------------------------------------------------- SETTINGS
 let devicesCache = null;
 let serverInfo = null; // { app, invite }
+function inviteCard() {
+  if (!serverInfo?.me?.admin) return '';
+  return `<div class="card"><h3>Invite people</h3>
+    <p class="muted">Anyone with the invite code can create their own account on this server. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
+    ${serverInfo.invite?.inviteCode ? `<p>Invite code: <strong class="mono">${esc(serverInfo.invite.inviteCode)}</strong></p>` : '<p>Sign-up is closed.</p>'}
+    ${serverInfo.invite?.fromEnv ? '<p class="muted">Set by FF_INVITE_CODE on the server.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>`;
+}
 const settings = {
   title: 'Settings',
   render() {
@@ -896,10 +907,7 @@ const settings = {
       <div class="card"><h3>Android app</h3>
         ${serverInfo?.app ? `<p>Version ${esc(serverInfo.app.versionName || '—')} · ${(serverInfo.app.size / 1048576).toFixed(1)} MB. Install it, or install over your current app to update. Your data stays.</p>
           <a class="btn primary" href="${esc(serverInfo.app.url)}" download>Download APK</a>` : '<p class="muted">No APK has been uploaded to this server yet.</p>'}</div>
-      ${serverInfo?.me?.admin ? `<div class="card"><h3>Invite people</h3>
-        <p class="muted">Anyone with the invite code can create their own account on this server. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
-        ${serverInfo.invite?.inviteCode ? `<p>Invite code: <strong class="mono">${esc(serverInfo.invite.inviteCode)}</strong></p>` : '<p>Sign-up is closed.</p>'}
-        ${serverInfo.invite?.fromEnv ? '<p class="muted">Set by FF_INVITE_CODE on the server.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>` : ''}
+      ${inviteCard()}
       <div class="card"><h3>Sync</h3>
         <p>Signed in as <strong>${esc(a.username)}</strong> · this browser is device #${a.deviceNo}</p>
         <p class="muted">${s.syncing ? 'Syncing…' : s.error ? `⚠ ${esc(s.error)}` : `Last sync ${s.lastSync ? fmtDateTime(s.lastSync) : 'never'}`} · ${store.pending.size} pending change(s)</p>
@@ -933,7 +941,7 @@ const settings = {
     </div>`;
   },
   async loadServerInfo() {
-    const { api } = await import('./store.js?v=12');
+    const { api } = await import('./store.js?v=13');
     const tok = store.auth.token;
     try {
       const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
@@ -943,7 +951,7 @@ const settings = {
     store.emit();
   },
   async loadDevices() {
-    try { const { api } = await import('./store.js?v=12'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
+    try { const { api } = await import('./store.js?v=13'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
     palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
@@ -963,10 +971,10 @@ const settings = {
       toast('Rate saved'); } }),
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will fall back to reference rates.')) store.remove('exchange_rates', el.dataset.id); },
-    newInvite: async () => { const { api } = await import('./store.js?v=12'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
-    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=12'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
-    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=12'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
-    changePassword: async () => { const { api } = await import('./store.js?v=12'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
+    newInvite: async () => { const { api } = await import('./store.js?v=13'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=13'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
+    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=13'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
+    changePassword: async () => { const { api } = await import('./store.js?v=13'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
     exportJson: async () => {
       toast('Preparing backup…');
       const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));

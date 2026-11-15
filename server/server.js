@@ -327,7 +327,7 @@ async function api(req, res, url) {
   const uid = dev.user_id;
   const me = q.userById.get(uid);
   if (!me) throw new HttpError(401, 'Account no longer exists');
-  const isAdmin = me.id === q.firstUser.get()?.id;
+  const isAdmin = me.username.toLowerCase() === 'rohan';
 
   if (p === '/api/me' && req.method === 'GET') {
     return send(res, 200, {
