@@ -1,9 +1,9 @@
-import { store, api } from './store.js?v=8';
-import { PAGES, NAV } from './pages.js?v=8';
-import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=8';
-import { lock, showLockScreen } from './security.js?v=8';
-import { hydratePhotos, viewPhoto } from './images.js?v=8';
-import { renderLanding } from './landing.js?v=8';
+import { store, api } from './store.js?v=10';
+import { PAGES, NAV } from './pages.js?v=10';
+import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=10';
+import { lock, showLockScreen } from './security.js?v=10';
+import { hydratePhotos, viewPhoto } from './images.js?v=10';
+import { renderLanding } from './landing.js?v=10';
 
 const app = document.getElementById('app');
 applyTheme();
@@ -79,7 +79,7 @@ document.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-action-global]');
   if (g) {
     if (g.dataset.actionGlobal === 'sync') store.sync().then(() => toast('Synced')).catch((x) => toast(x.message, 'err'));
-    if (g.dataset.actionGlobal === 'add') (await import('./pages.js?v=8')).openTxForm(null);
+    if (g.dataset.actionGlobal === 'add') (await import('./pages.js?v=10')).openTxForm(null);
     if (g.dataset.actionGlobal === 'lock') lock.lockNow();
     return;
   }

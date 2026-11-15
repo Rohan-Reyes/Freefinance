@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
-// Local-first Android app, optional self-hosted cloud sync + this web app.
-import { api } from './store.js?v=8';
-import { esc } from './ui.js?v=8';
+// Personal finance manager on Android and the web; local-first with optional sync.
+import { api } from './store.js?v=10';
+import { esc } from './ui.js?v=10';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
@@ -20,42 +20,58 @@ const I = {
   phone: '<path d="M16 1H8a3 3 0 0 0-3 3v16a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3V4a3 3 0 0 0-3-3zm-4 21a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5-4H7V4h10z"/>',
   server: '<path d="M4 3h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm0 10h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1zm3-7.5A1.5 1.5 0 1 0 7 8.5 1.5 1.5 0 0 0 7 5.5zm0 10A1.5 1.5 0 1 0 7 18.5a1.5 1.5 0 0 0 0-3z"/>',
   web: '<path d="M20 3H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h6v2H8v2h8v-2h-2v-2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 13H4V5h16z"/>',
-  android: '<path d="M17.6 9.48l1.84-3.18a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/>',
   download: '<path d="M19 9h-4V3H9v6H5l7 7zM5 18v2h14v-2z"/>',
   mail: '<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>',
   arrow: '<path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>',
+  pie: '<path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99z"/>',
+  wallet: '<path d="M21 18v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1h-9a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2zm-9-2h10V8H12zm4-2.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>',
+  people: '<path d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>',
+  fx: '<path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/>',
+  check: '<path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>',
 };
 const svg = (k, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
 const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
+const peso = (n) => `${n < 0 ? '−' : ''}₱${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const peso0 = (n) => `₱${Math.round(n).toLocaleString('en-PH')}`;
 
 const FEATURES = [
-  ['phone', 'Works offline, first', 'Everything is stored on your phone. No account, no internet needed to track money.'],
-  ['card', 'Your banks and cards', 'GCash, Maya, MariBank, GoTyme, BDO, BPI and more, each with its own look.'],
-  ['chart', 'Where the money goes', 'Spending by category, a 30-day cash-flow forecast and monthly trends.'],
-  ['bills', 'Bills and receivables', 'Recurring bills, money owed to you and planned payouts, with due dates.'],
-  ['receipt', 'Receipts', 'Snap receipts and attach proof photos to transactions.'],
-  ['lock', 'Private by design', 'App lock with fingerprint or PIN. Sync, if you turn it on, goes to your own server.'],
+  ['wallet', 'Accounts & net worth'], ['pie', 'Budgets'], ['bills', 'Bills & subscriptions'], ['card', 'Cards & credit'],
+  ['people', 'Debts & receivables'], ['chart', 'Reports & forecast'], ['receipt', 'Receipts'], ['fx', 'Multi-currency'],
 ];
 
 // Demo data for the phone mock-up (illustrative only).
 const DEMO = {
   accounts: { label: 'Accounts', total: 45959.17, rows: [['G', '#0057E7', '#fff', 'GCash', 'E-wallet', 2140], ['M', '#F26A0A', '#fff', 'MariBank', 'Savings', 41173], ['m', '#0E1A13', '#00D26A', 'Maya', 'E-wallet', 500], ['₱', '#1A4D9C', '#fff', 'Cash', 'Wallet', 2146.17]] },
-  cards: { label: 'Cards', total: 2, rows: null },
-  bills: { label: 'Bills', total: 1450, rows: [['N', '#E50914', '#fff', 'Netflix', 'Due in 3 days', -549], ['P', '#F5A020', '#07111F', 'PLDT Fibr', 'Due Nov 20', -1699], ['A', '#34D399', '#07111F', 'Allowance', 'Tomorrow', 150]] },
+  budgets: { label: 'Budgets', total: 6889, rows: null },
+  bills: { label: 'Bills', total: 2248, rows: [['N', '#E50914', '#fff', 'Netflix', 'Due in 3 days', -549], ['P', '#F5A020', '#07111F', 'PLDT Fibr', 'Due Nov 20', -1699], ['A', '#34D399', '#07111F', 'Allowance', 'Tomorrow', 150]] },
 };
-const peso = (n) => `${n < 0 ? '−' : ''}₱${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function phoneScreen(key) {
   const d = DEMO[key];
-  if (key === 'cards') {
-    return `<div class="lp-screen-title">Cards</div>
-      <div class="lp-card" style="background:linear-gradient(135deg,#2D7BFF,#0057E7 55%,#003BB0)"><b>GCash</b><span>••••  ••••  ••••  2466</span><i class="lp-visa">VISA</i></div>
-      <div class="lp-card" style="background:linear-gradient(135deg,#FF8A1E,#F26A0A 55%,#D9480F)"><b>MariBank</b><span>••••  ••••  ••••  0915</span><i class="lp-mc"><em></em><em></em></i></div>`;
+  if (key === 'budgets') {
+    const rows = [['Food & Dining', 7400, 10000], ['Transport', 1200, 3000], ['Shopping', 2600, 2500], ['Bills', 1911, 4500]];
+    return `<div class="lp-screen-title">Budget left this month</div>
+      <div class="lp-total" data-count="${d.total}">${peso(0)}</div>
+      ${rows.map(([n, spent, lim], i) => { const r = spent / lim; return `<div class="lp-brow" style="--i:${i}"><span>${n}<small>${peso0(spent)} of ${peso0(lim)}</small></span><i><em style="--w:${Math.min(100, r * 100)}%;--c:${r > 1 ? '#FB7185' : r > 0.8 ? '#FBBF24' : '#34D399'}"></em></i></div>`; }).join('')}`;
   }
-  return `<div class="lp-screen-title">${key === 'bills' ? 'Upcoming bills' : 'Net worth'}</div>
+  return `<div class="lp-screen-title">${key === 'bills' ? 'Due in the next 7 days' : 'Net worth'}</div>
     <div class="lp-total" data-count="${d.total}">${peso(0)}</div>
     ${d.rows.map(([m, bg, fg, name, sub, v], i) => `<div class="lp-row" style="--i:${i}"><span class="lp-mark" style="background:${bg};color:${fg}">${esc(m)}</span><span class="lp-name">${esc(name)}<small>${esc(sub)}</small></span><b class="${v < 0 ? 'neg' : ''}">${peso(v)}</b></div>`).join('')}`;
 }
+
+const browserMock = () => `<div class="lp-browser">
+  <div class="lp-bbar"><i></i><i></i><i></i><span>budgets.aten-systems.site</span></div>
+  <div class="lp-bbody">
+    <aside><b>My Finance</b>${['Dashboard', 'Accounts', 'Records', 'Budgets', 'Bills', 'Cards', 'Analytics'].map((n, i) => `<span class="${i ? '' : 'on'}">${n}</span>`).join('')}</aside>
+    <div class="lp-bmain">
+      <div class="lp-kpis"><div><small>Net worth</small><b>₱45,959</b></div><div><small>Spent this month</small><b class="neg">₱13,111</b></div><div><small>Budget left</small><b class="pos">₱6,889</b></div></div>
+      <div class="lp-chart"><small>Monthly spending</small>
+        <svg viewBox="0 0 300 90" preserveAspectRatio="none"><path class="area" d="M0,70 C40,60 60,72 90,55 S150,30 180,40 S250,15 300,22 L300,90 L0,90Z"/><path class="line" d="M0,70 C40,60 60,72 90,55 S150,30 180,40 S250,15 300,22"/></svg>
+      </div>
+      <div class="lp-blist">${[['Food & Dining', 81], ['Electronics', 11], ['Subscriptions', 4]].map(([n, v]) => `<div><span>${n}</span><i><em style="--w:${v}%"></em></i><b>${v}%</b></div>`).join('')}</div>
+    </div>
+  </div>
+</div>`;
 
 export async function renderLanding(app, { onSignedIn, browserName }) {
   let status = { needsSetup: false, signupOpen: false, app: null };
@@ -70,69 +86,93 @@ export async function renderLanding(app, { onSignedIn, browserName }) {
   app.innerHTML = `<div class="lp">
     <header class="lp-nav">
       <a class="lp-brand" href="#lp-top"><span class="logo">₱</span><span>My Finance<small>by ATEN Systems</small></span></a>
-      <nav><a href="#lp-local">Local-first</a><a href="#lp-features">Features</a><a href="#lp-download">Download</a><a href="#lp-contact">Contact</a>
+      <nav><a href="#lp-features">Features</a><a href="#lp-two">Phone &amp; web</a><a href="#lp-plan">Planner</a><a href="#lp-download">Download</a><a href="#lp-contact">Contact</a>
         <a class="lp-btn small" href="#lp-signin">Sign in</a></nav>
     </header>
 
     <section class="lp-hero" id="lp-top">
       <div class="lp-copy">
-        <span class="lp-eyebrow">Local-first finance app · optional cloud sync</span>
-        <h1>Your money stays <span class="lp-accent">on your phone.</span> Sync only if you want to.</h1>
-        <p class="lp-lead">My Finance is a local-first Android app for accounts, cards, bills and spending. It works fully offline. Turn on cloud sync to use it on the web and on more devices too, through your own server.</p>
-        <div class="lp-cta">${dlBtn('big')}<a class="lp-btn big ghost" href="#lp-signin">${status.signupOpen ? 'Create a cloud account' : 'Sign in to the web app'} ${svg('arrow')}</a></div>
+        <span class="lp-eyebrow">Personal finance manager · Android &amp; web</span>
+        <h1>Manage your money, <span class="lp-accent">on your phone</span> or on the web.</h1>
+        <p class="lp-lead">Accounts, budgets, bills and cards in one place. Offline on Android, synced to the web when you want.</p>
+        <div class="lp-cta">${dlBtn('big')}<a class="lp-btn big ghost" href="#lp-signin">${svg('web')} Open the web app</a></div>
         ${meta}
+        <ul class="lp-ticks"><li>${svg('check')} Free</li><li>${svg('check')} Works offline</li><li>${svg('check')} Sync is optional</li></ul>
       </div>
       <div class="lp-stage">
-        <div class="lp-phone" id="lpPhone">
-          <div class="lp-notch"></div>
-          <div class="lp-tabs" role="tablist">${Object.entries(DEMO).map(([k, d], i) => `<button role="tab" class="${i ? '' : 'on'}" data-screen="${k}">${d.label}</button>`).join('')}</div>
-          <div class="lp-screen" id="lpScreen">${phoneScreen('accounts')}</div>
+        <div class="lp-devices" role="tablist" aria-label="Preview">
+          <button type="button" role="tab" class="on" data-device="phone">${svg('phone')} Phone</button>
+          <button type="button" role="tab" data-device="web">${svg('web')} Web</button>
         </div>
-        <p class="lp-hint">Demo data · tap the tabs</p>
-      </div>
-    </section>
+        <div class="lp-device-wrap" id="lpDevice" data-device="phone">
+          <div class="lp-phone" id="lpPhone">
+            <div class="lp-notch"></div>
+            <div class="lp-tabs" role="tablist">${Object.entries(DEMO).map(([k, d], i) => `<button type="button" role="tab" class="${i ? '' : 'on'}" data-screen="${k}">${d.label}</button>`).join('')}</div>
+            <div class="lp-screen" id="lpScreen">${phoneScreen('accounts')}</div>
+          </div>
+          ${browserMock()}
+        </div>
 
-    <section class="lp-local reveal" id="lp-local">
-      <div class="lp-local-copy">
-        <span class="lp-eyebrow">How it works</span>
-        <h2>Local-first, cloud optional</h2>
-        <p id="lpModeText"></p>
-        <label class="lp-switch"><input type="checkbox" id="lpCloud"><span class="lp-track"><span class="lp-thumb"></span></span><b>Cloud sync</b></label>
-      </div>
-      <div class="lp-diagram" id="lpDiagram">
-        <div class="lp-node phone">${svg('phone')}<b>Your phone</b><small>All data, always</small></div>
-        <div class="lp-link l1"><i></i></div>
-        <div class="lp-node server">${svg('server')}<b>Your server</b><small>budgets.aten-systems.site</small></div>
-        <div class="lp-link l2"><i></i></div>
-        <div class="lp-node web">${svg('web')}<b>Web &amp; other devices</b><small>Same data, in sync</small></div>
       </div>
     </section>
 
     <section class="lp-features" id="lp-features">
-      ${FEATURES.map(([k, t, d], i) => `<article class="lp-feat reveal" style="--d:${i * 70}ms">${svg(k, 'feat')}<h3>${t}</h3><p>${d}</p></article>`).join('')}
+      <header class="lp-sec-head reveal"><h2>Everything for your money</h2></header>
+      ${FEATURES.map(([k, t], i) => `<article class="lp-feat reveal" style="--d:${(i % 4) * 60}ms">${svg(k, 'feat')}<h3>${t}</h3></article>`).join('')}
+    </section>
+
+    <section class="lp-two" id="lp-two">
+      <article class="reveal">
+        <div class="lp-two-art phone">${svg('phone')}</div><h3>Phone</h3>
+        <ul>${[['lock', 'Offline & locked'], ['receipt', 'Snap receipts'], ['chart', 'Home-screen widgets']].map(([k, t]) => `<li>${svg(k)}${t}</li>`).join('')}</ul>
+        ${dlBtn()}
+      </article>
+      <article class="reveal" style="--d:90ms">
+        <div class="lp-two-art web">${svg('web')}</div><h3>Web</h3>
+        <ul>${[['sync', 'Synced with phone'], ['pie', 'Big-screen reports'], ['download', 'CSV & JSON export']].map(([k, t]) => `<li>${svg(k)}${t}</li>`).join('')}</ul>
+        <a class="lp-btn" href="#lp-signin">Open web app ${svg('arrow')}</a>
+      </article>
+    </section>
+
+    <section class="lp-plan reveal" id="lp-plan">
+      <div class="lp-plan-copy">
+        <span class="lp-eyebrow">Try it</span>
+        <h2>Plan your month</h2>
+        <label class="lp-field"><span>Monthly income</span><input id="lpIncome" type="number" inputmode="numeric" min="0" step="500" value="35000"></label>
+        <div class="lp-presets" role="radiogroup" aria-label="Split">
+          ${[['50/30/20', 50, 30, 20], ['60/20/20', 60, 20, 20], ['70/20/10', 70, 20, 10]].map(([n, a1, b1, c1], i) => `<button type="button" role="radio" class="${i ? '' : 'on'}" data-split="${a1},${b1},${c1}">${n}</button>`).join('')}
+        </div>
+      </div>
+      <div class="lp-plan-out" id="lpPlanOut" aria-live="polite"></div>
+    </section>
+
+    <section class="lp-local reveal" id="lp-local">
+      <div class="lp-local-copy">
+        <h2>Local-first. Sync if you want.</h2>
+        <p id="lpModeText"></p>
+        <label class="lp-switch"><input type="checkbox" id="lpCloud"><span class="lp-track"><span class="lp-thumb"></span></span><b>Sync phone and web</b></label>
+      </div>
+      <div class="lp-diagram" id="lpDiagram">
+        <div class="lp-node phone">${svg('phone')}<b>Phone</b></div>
+        <div class="lp-link l1"><i></i></div>
+        <div class="lp-node server">${svg('server')}<b>Server</b></div>
+        <div class="lp-link l2"><i></i></div>
+        <div class="lp-node web">${svg('web')}<b>Web</b></div>
+      </div>
     </section>
 
     <section class="lp-get reveal" id="lp-download">
       <div>
         <span class="lp-eyebrow">Android</span>
         <h2>Get the app</h2>
-        <p>The same link always has the latest version. To update, download it again and install over the app; your data stays on your phone.</p>
         <ol class="lp-steps">
-          <li><b>1</b><span>Tap <strong>Download for Android</strong> on your phone.</span></li>
-          <li><b>2</b><span>Open the file. If Android asks, allow your browser to install unknown apps.</span></li>
-          <li><b>3</b><span>Optional: Settings → Data &amp; sync → Server sync to turn on cloud sync.</span></li>
+          <li><b>${svg('download')}</b><span>Download</span></li>
+          <li><b>${svg('phone')}</b><span>Open &amp; install</span></li>
+          <li><b>${svg('sync')}</b><span>Optional: sign in to sync</span></li>
         </ol>
         <div class="lp-cta">${dlBtn()}</div>${meta}
         ${a?.sha256 ? `<p class="lp-hash">SHA-256 ${esc(a.sha256)}</p>` : ''}
       </div>
-    </section>
-
-    <section class="lp-faq reveal">
-      <h2>Questions</h2>
-      <details><summary>Do I need an account?</summary><p>No. The Android app works fully offline with no account. An account is only needed for cloud sync and the web app.</p></details>
-      <details><summary>Where is my data stored?</summary><p>On your phone. With cloud sync on, a copy is kept on the sync server so your other devices and the web app stay up to date. Each account's data is kept separate.</p></details>
-      <details><summary>How do I get a cloud account?</summary><p>Accounts are invite-only. Ask for an invite code using the contact options below, then create your account here.</p></details>
-      <details><summary>Is it free?</summary><p>Yes, the app is free to download and use.</p></details>
     </section>
 
     <section class="lp-account" id="lp-signin">
@@ -150,7 +190,6 @@ export async function renderLanding(app, { onSignedIn, browserName }) {
       <div>
         <span class="lp-eyebrow">Contact</span>
         <h2>Built by ATEN Systems</h2>
-        <p>Questions, invite requests or a custom build? Get in touch with the team behind My Finance.</p>
       </div>
       <div class="lp-contact-grid">
         <a class="lp-contact-card" href="${CONTACT.inquiry}" target="_blank" rel="noopener">${svg('arrow')}<b>Send an inquiry</b><small>aten-systems.site/start</small></a>
@@ -176,7 +215,7 @@ function wireInteractions(root) {
   const countUp = () => {
     const el = screen.querySelector('[data-count]'); if (!el) return;
     const target = Number(el.dataset.count), t0 = performance.now(), dur = reduce ? 0 : 900;
-    const tick = (t) => { const p = dur ? Math.min(1, (t - t0) / dur) : 1; el.textContent = Number.isInteger(target) && target < 10 ? String(Math.round(target * p)) : peso(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(tick); };
+    const tick = (t) => { const p = dur ? Math.min(1, (t - t0) / dur) : 1; el.textContent = peso(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   };
   let current = 'accounts', timer = null;
@@ -189,30 +228,55 @@ function wireInteractions(root) {
   };
   tabs.forEach((b) => b.addEventListener('click', () => show(b.dataset.screen, true)));
   countUp();
+  // Phone / Web preview switch
+  const wrap = root.querySelector('#lpDevice');
   if (!reduce) {
     const keys = Object.keys(DEMO);
-    timer = setInterval(() => show(keys[(keys.indexOf(current) + 1) % keys.length]), 4200);
-    // gentle 3D tilt that follows the pointer
-    const stage = root.querySelector('.lp-stage'), phone = root.querySelector('#lpPhone');
+    timer = setInterval(() => { if (wrap.dataset.device === 'phone') show(keys[(keys.indexOf(current) + 1) % keys.length]); }, 4200);
+  }
+  root.querySelectorAll('.lp-devices button').forEach((b) => b.addEventListener('click', () => {
+    wrap.dataset.device = b.dataset.device;
+    root.querySelectorAll('.lp-devices button').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  // gentle 3D tilt that follows the pointer
+  if (!reduce) {
+    const stage = root.querySelector('.lp-stage');
     stage.addEventListener('pointermove', (e) => {
       const r = stage.getBoundingClientRect();
       const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
-      phone.style.transform = `rotateY(${x * 14}deg) rotateX(${-y * 10}deg)`;
+      wrap.style.transform = `rotateY(${x * 10}deg) rotateX(${-y * 7}deg)`;
     });
-    stage.addEventListener('pointerleave', () => { phone.style.transform = ''; });
+    stage.addEventListener('pointerleave', () => { wrap.style.transform = ''; });
   }
+  // budget planner
+  const income = root.querySelector('#lpIncome'), out = root.querySelector('#lpPlanOut');
+  let split = [50, 30, 20];
+  const plan = () => {
+    const inc = Math.max(0, Number(income.value) || 0);
+    const parts = [['Needs', 'Rent, food, bills, transport', '#4D90E8'], ['Wants', 'Eating out, shopping, fun', '#F5A020'], ['Savings', 'Emergency fund, goals, debt', '#34D399']];
+    out.innerHTML = `<div class="lp-plan-bar">${parts.map(([, , c], i) => `<i style="--w:${split[i]}%;--c:${c}"></i>`).join('')}</div>
+      ${parts.map(([n, , c], i) => `<div class="lp-plan-row"><span class="dot" style="background:${c}"></span><span>${n} <small>${split[i]}%</small></span><b>${peso0(inc * split[i] / 100)}</b></div>`).join('')}
+      <p class="lp-plan-note">${svg('chart')} <strong>${peso0(inc * split[2] / 100 * 12)}</strong> saved in a year</p>`;
+  };
+  income.addEventListener('input', plan);
+  root.querySelectorAll('.lp-presets button').forEach((b) => b.addEventListener('click', () => {
+    split = b.dataset.split.split(',').map(Number);
+    root.querySelectorAll('.lp-presets button').forEach((x) => x.classList.toggle('on', x === b));
+    plan();
+  }));
+  plan();
   // local-first switch
   const sw = root.querySelector('#lpCloud'), diagram = root.querySelector('#lpDiagram'), text = root.querySelector('#lpModeText');
   const mode = () => {
     diagram.classList.toggle('cloud', sw.checked);
     text.textContent = sw.checked
-      ? 'Cloud sync on: your phone still keeps everything, and also syncs with your own server, so the web app and your other devices stay up to date within seconds.'
-      : 'Cloud sync off: everything lives on your phone. It works with no internet and no account, and nothing leaves the device unless you export it.';
+      ? 'Phone, server and web stay in sync within seconds.'
+      : 'Everything stays on your phone. No account, no internet needed.';
   };
   sw.addEventListener('change', mode); mode();
   // reveal on scroll
   if (!('IntersectionObserver' in window)) { root.querySelectorAll('.reveal').forEach((el) => el.classList.add('shown')); return; }
-  const io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('shown'); io.unobserve(en.target); } }), { threshold: 0.15 });
+  const io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('shown'); io.unobserve(en.target); } }), { threshold: 0.05 });
   root.querySelectorAll('.reveal').forEach((el) => (reduce ? el.classList.add('shown') : io.observe(el)));
 }
 
@@ -224,9 +288,9 @@ function wireForm(app, status, { onSignedIn, browserName }) {
   const draw = () => {
     form.querySelector('.tabs').innerHTML = modes.length > 1
       ? modes.map((m) => `<button type="button" class="tab ${m === mode ? 'on' : ''}" data-mode="${m}">${m === 'signin' ? 'Sign in' : 'Create account'}</button>`).join('') : '';
-    const t = { setup: ['Set up your server', 'First-time setup: enter the one-time code from server/data/SETUP_CODE.txt.', 'Create account'],
+    const t = { setup: ['Set up your server', 'Enter your one-time setup code to create the admin account.', 'Create account'],
       signin: ['Sign in to the web app', 'Use the same account as Server sync in the Android app.', 'Sign in'],
-      signup: ['Create a cloud account', 'Accounts are invite-only. Enter the invite code you were given.', 'Create account'] }[mode];
+      signup: ['Create an account', 'Accounts are invite-only. Enter the invite code you were given.', 'Create account'] }[mode];
     form.querySelector('.form-title').textContent = t[0];
     form.querySelector('.form-sub').textContent = t[1];
     form.querySelector('button[type=submit]').textContent = t[2];

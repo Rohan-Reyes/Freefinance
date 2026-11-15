@@ -1,6 +1,6 @@
 // UI helpers: escaping, formatting, modals/forms, toasts, small SVG charts.
-import { symbol, base } from './logic.js?v=8';
-import { store } from './store.js?v=8';
+import { symbol, base } from './logic.js?v=10';
+import { store } from './store.js?v=10';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
