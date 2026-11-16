@@ -101,6 +101,10 @@ class MainActivity : FragmentActivity() {
       val isAppLocked by dashboardViewModel.isAppLocked.collectAsState()
       val biometricLockEnabled by dashboardViewModel.biometricLockEnabled.collectAsState()
       val appLockPin by dashboardViewModel.appLockPin.collectAsState()
+      val lockStateReady by dashboardViewModel.lockStateReady.collectAsState()
+      val lockEnabledAtLaunch by dashboardViewModel.lockEnabledAtLaunch.collectAsState()
+      // Balances are never drawn while locked or before the lock setting is known (no flash on start).
+      val showLock = isAppLocked && (biometricLockEnabled || lockEnabledAtLaunch)
 
       MyApplicationTheme(
         themeMode = appThemeMode,
@@ -122,7 +126,7 @@ class MainActivity : FragmentActivity() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-          AnimatedContent(
+          if (lockStateReady && !showLock) AnimatedContent(
             targetState = currentDestination,
             transitionSpec = {
               if (targetState == MainDestination.DASHBOARD) {
@@ -325,7 +329,7 @@ class MainActivity : FragmentActivity() {
           TransactionSuccessAnimationOverlay(viewModel = dashboardViewModel)
 
           AnimatedVisibility(
-            visible = isAppLocked && biometricLockEnabled,
+            visible = showLock,
             enter = fadeIn(animationSpec = tween(220)),
             exit = fadeOut(animationSpec = tween(250))
           ) {

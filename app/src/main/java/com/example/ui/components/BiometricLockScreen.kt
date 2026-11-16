@@ -83,6 +83,18 @@ fun BiometricLockScreen(
         )
     }
     var isError by remember { mutableStateOf(false) }
+    // Wrong-PIN limit, kept across restarts so closing the app does not reset it.
+    val lockPrefs = remember(context) { context.getSharedPreferences("ff_pin_guard", android.content.Context.MODE_PRIVATE) }
+    var lockedUntil by remember { mutableStateOf(lockPrefs.getLong("locked_until", 0L)) }
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(lockedUntil) {
+        while (System.currentTimeMillis() < lockedUntil) {
+            nowMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(500)
+        }
+        nowMs = System.currentTimeMillis()
+    }
+    val coolingDown = nowMs < lockedUntil
 
     fun triggerBiometricPrompt() {
         isError = false
@@ -261,7 +273,10 @@ fun BiometricLockScreen(
 
             // Tactile Numeric Keypad for 4-Digit PIN
             val onDigitPress: (String) -> Unit = { digit ->
-                if (enteredPin.length < 4) {
+                if (coolingDown) {
+                    isError = true
+                    statusMessage = "Too many wrong PINs. Try again in ${((lockedUntil - System.currentTimeMillis()) / 1000).coerceAtLeast(1)} s or use biometrics."
+                } else if (enteredPin.length < 4) {
                     isError = false
                     val nextPin = enteredPin + digit
                     enteredPin = nextPin
@@ -270,10 +285,15 @@ fun BiometricLockScreen(
                             onSetInitialPin?.invoke(nextPin)
                             onUnlocked()
                         } else if (nextPin == savedPin) {
+                            lockPrefs.edit().putInt("fails", 0).putLong("locked_until", 0L).apply()
                             onUnlocked()
                         } else {
+                            val fails = lockPrefs.getInt("fails", 0) + 1
+                            val wait = if (fails >= 5) (30_000L shl (fails - 5).coerceAtMost(5)).coerceAtMost(15 * 60_000L) else 0L
+                            lockedUntil = if (wait > 0) System.currentTimeMillis() + wait else 0L
+                            lockPrefs.edit().putInt("fails", fails).putLong("locked_until", lockedUntil).apply()
                             isError = true
-                            statusMessage = "Incorrect PIN. Try again or use Biometrics."
+                            statusMessage = if (wait > 0) "Too many wrong PINs. Wait ${wait / 1000} s or use biometrics." else "Incorrect PIN. ${5 - fails} tries left before a short wait."
                             enteredPin = ""
                         }
                     }

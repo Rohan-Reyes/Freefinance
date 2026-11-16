@@ -166,7 +166,6 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val cloudStatus by viewModel.cloudBackupStatus.collectAsState()
     val heroBackgroundStyle by viewModel.heroBackgroundStyle.collectAsState()
     val appThemePreset by viewModel.appThemePreset.collectAsState()
     val appThemeMode by viewModel.appThemeMode.collectAsState()
@@ -182,7 +181,6 @@ fun SettingsScreen(
     // Dialog & Confirmation states
     var showImportJsonDialog by remember { mutableStateOf(false) }
     var pendingJsonImportUri by remember { mutableStateOf<Uri?>(null) }
-    var showDriveRestoreDialog by remember { mutableStateOf(false) }
     var showAddExchangeRateDialog by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
 
@@ -1006,139 +1004,6 @@ fun SettingsScreen(
                     }
                 }
 
-                // Google Drive Cloud Backup Card
-                item(key = "CARD_CLOUD_BACKUP") {
-                    SettingsGroupCard {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            SettingsIconBadge(
-                                icon = Icons.Default.CloudUpload,
-                                containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.16f),
-                                contentColor = MaterialTheme.colorScheme.tertiary
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Google Drive Encrypted Vault",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Private backup snapshot stored in your Google Drive AppData",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Account Connection Status Pill
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        tint = if (cloudStatus.userEmail != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                    Column {
-                                        Text(
-                                            text = cloudStatus.userEmail ?: "Not Connected",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = if (cloudStatus.userEmail != null) "Google Drive AppData Ready" else "Sign in to enable cloud backup",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                if (cloudStatus.userEmail == null) {
-                                    Button(
-                                        onClick = { viewModel.authenticateWithGoogle(context) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Sign In", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-
-                        if (cloudStatus.isBackingUp || cloudStatus.isRestoring) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Text(
-                                    text = if (cloudStatus.isBackingUp) "Uploading encrypted snapshot to Drive..." else "Restoring snapshot from Drive...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        } else if (cloudStatus.lastBackupTime != null) {
-                            val timeStr = SimpleDateFormat("MMM d, yyyy • HH:mm", Locale.getDefault()).format(Date(cloudStatus.lastBackupTime ?: 0L))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Default.CloudDone, contentDescription = null, tint = FinPositive, modifier = Modifier.size(16.dp))
-                                Text(
-                                    text = "Last cloud sync: $timeStr",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = { viewModel.backupToCloudDrive(context) },
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = !cloudStatus.isBackingUp && !cloudStatus.isRestoring,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(17.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Backup Now", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = { showDriveRestoreDialog = true },
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = !cloudStatus.isBackingUp && !cloudStatus.isRestoring,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(17.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Restore", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-
                 // Universal JSON State & CSV Spreadsheet Export Card
                 item(key = "CARD_LOCAL_EXPORT_IMPORT") {
                     SettingsGroupCard {
@@ -1264,7 +1129,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Rounded.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                         Text(
-                            text = "Your data is stored on this phone. It only leaves the device when you use server sync, Google Drive backup or an export.",
+                            text = "Your data is stored on this phone. It only leaves the device when you use server sync or an export.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1368,37 +1233,6 @@ fun SettingsScreen(
                         pendingJsonImportUri = null
                     }
                 ) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // -------------------------------------------------------------
-    // DIALOG: CONFIRM CLOUD DRIVE RESTORE
-    // -------------------------------------------------------------
-    if (showDriveRestoreDialog) {
-        AlertDialog(
-            onDismissRequest = { showDriveRestoreDialog = false },
-            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Restore Database from Google Drive?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "This will download the latest backup snapshot from your Google Drive AppData folder and overwrite your current local database.\n\nDo you want to proceed?"
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDriveRestoreDialog = false
-                        viewModel.restoreFromCloudDrive(context)
-                    }
-                ) {
-                    Text("Restore Database", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDriveRestoreDialog = false }) {
                     Text("Cancel")
                 }
             }

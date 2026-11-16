@@ -31,6 +31,10 @@ const MAX_DEVICES = 8191; // keeps global ids below 2^53 (JS safe integers)
 const MAX_USERS = Math.max(1, Number(process.env.FF_MAX_USERS || 50));
 const DOWNLOAD_DIR = path.join(DATA_DIR, 'downloads');
 const APK_NAME = 'my-finance.apk';
+// Per-account storage limits, so one account cannot fill the server's disk.
+const MAX_RECORD_BYTES = 256 * 1024;
+const MAX_LIVE_RECORDS = Math.max(1000, Number(process.env.FF_MAX_RECORDS || 200000));
+const MAX_FILES_PER_USER = Math.max(10, Number(process.env.FF_MAX_FILES || 3000));
 
 // Tables the Android Room schema syncs, plus "prefs" for shared settings.
 const TABLES = new Set([
@@ -119,21 +123,29 @@ const q = {
   liveCount: db.prepare('SELECT COUNT(*) n FROM records WHERE user_id = ? AND deleted = 0 AND tbl != \'prefs\''),
   maxSeq: db.prepare('SELECT COALESCE(MAX(seq), 0) m FROM records'),
   ownsFile: db.prepare('SELECT 1 FROM file_owners WHERE user_id = ? AND sha = ?'),
+  fileCount: db.prepare('SELECT COUNT(*) n FROM file_owners WHERE user_id = ?'),
+  revokeOthers: db.prepare('UPDATE devices SET revoked = 1, token_hash = NULL WHERE user_id = ? AND device_no != ?'),
   addFileOwner: db.prepare('INSERT OR IGNORE INTO file_owners(user_id, sha) VALUES(?, ?)'),
 };
 
 // ---------- helpers ----------
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-function hashPassword(pw) {
+// scrypt runs on the libuv thread pool (async) so password checks never block other requests.
+const scrypt = (pw, salt) => new Promise((resolve, reject) =>
+  crypto.scrypt(pw, salt, 64, { N: 16384, r: 8, p: 1 }, (err, key) => (err ? reject(err) : resolve(key))));
+async function hashPassword(pw) {
   const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(pw, salt, 64, { N: 16384, r: 8, p: 1 });
+  const key = await scrypt(pw, salt);
   return `scrypt$${salt.toString('hex')}$${key.toString('hex')}`;
 }
-function verifyPassword(pw, stored) {
-  const [alg, saltHex, keyHex] = String(stored).split('$');
-  if (alg !== 'scrypt') return false;
-  const key = crypto.scryptSync(pw, Buffer.from(saltHex, 'hex'), 64, { N: 16384, r: 8, p: 1 });
-  return crypto.timingSafeEqual(key, Buffer.from(keyHex, 'hex'));
+// Used when the username does not exist, so a failed login takes the same time either way.
+const DUMMY_HASH = `scrypt$${'00'.repeat(16)}$${'00'.repeat(64)}`;
+async function verifyPassword(pw, stored) {
+  const [alg, saltHex, keyHex] = String(stored || DUMMY_HASH).split('$');
+  if (alg !== 'scrypt' || !saltHex || !keyHex) return false;
+  const key = await scrypt(pw, Buffer.from(saltHex, 'hex'));
+  const want = Buffer.from(keyHex, 'hex');
+  return want.length === key.length && crypto.timingSafeEqual(key, want);
 }
 let seqCounter = q.maxSeq.get().m;
 
@@ -148,7 +160,7 @@ function setupCode() {
   return code;
 }
 
-// Very small in-memory login throttle: 10 failures / 15 min per client IP.
+// Small in-memory throttle: 10 failures / 15 min per client IP, and per username (keys "u:" + name).
 const failures = new Map();
 function clientIp(req) {
   return String(req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0] || req.socket.remoteAddress || '').trim();
@@ -171,7 +183,7 @@ function noteFailure(ip) {
 
 function send(res, code, obj, headers = {}) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(body);
 }
 class HttpError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
@@ -290,7 +302,10 @@ async function api(req, res, url) {
     if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Username: 3–64 letters, digits or . _ @ -');
     if (password.length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
     if (q.getUser.get(username)) throw new HttpError(409, 'That username is taken');
-    const r = q.addUser.run(username, hashPassword(password), Date.now());
+    const hash = await hashPassword(password);
+    if (q.getUser.get(username)) throw new HttpError(409, 'That username is taken');
+    if (q.userCount.get().n >= MAX_USERS) throw new HttpError(403, 'This server is full');
+    const r = q.addUser.run(username, hash, Date.now());
     return send(res, 200, { username, ...issueDevice(b, Number(r.lastInsertRowid)), serverTime: Date.now() });
   }
 
@@ -299,12 +314,15 @@ async function api(req, res, url) {
     if (throttled(ip)) throw new HttpError(429, 'Too many attempts, try again later');
     const b = await readJson(req);
     const code = setupCode();
-    if (String(b.setupCode || '').trim().toUpperCase() !== code) { noteFailure(ip); throw new HttpError(403, 'Wrong setup code'); }
+    const givenSetup = Buffer.from(String(b.setupCode || '').trim().toUpperCase());
+    if (!code || givenSetup.length !== code.length || !crypto.timingSafeEqual(givenSetup, Buffer.from(code))) { noteFailure(ip); throw new HttpError(403, 'Wrong setup code'); }
     const username = String(b.username || '').trim();
     const password = String(b.password || '');
     if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Username: 3–64 letters, digits or . _ @ -');
     if (password.length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
-    const r = q.addUser.run(username, hashPassword(password), Date.now());
+    const hash = await hashPassword(password);
+    if (q.userCount.get().n > 0) throw new HttpError(409, 'Already set up');
+    const r = q.addUser.run(username, hash, Date.now());
     q.setMeta.run('setup_code', '');
     fs.rmSync(path.join(DATA_DIR, 'SETUP_CODE.txt'), { force: true });
     return send(res, 200, { username, ...issueDevice(b, Number(r.lastInsertRowid)), serverTime: Date.now() });
@@ -313,12 +331,16 @@ async function api(req, res, url) {
   if (p === '/api/login' && req.method === 'POST') {
     if (throttled(ip)) throw new HttpError(429, 'Too many attempts, try again later');
     const b = await readJson(req);
-    const user = q.getUser.get(String(b.username || '').trim());
-    if (!user || !verifyPassword(String(b.password || ''), user.pass_hash)) {
-      noteFailure(ip);
+    const uname = String(b.username || '').trim();
+    const ukey = 'u:' + uname.toLowerCase();
+    if (throttled(ukey)) throw new HttpError(429, 'Too many attempts for this account, try again later');
+    const user = q.getUser.get(uname);
+    const ok = await verifyPassword(String(b.password || ''), user?.pass_hash);
+    if (!user || !ok) {
+      noteFailure(ip); noteFailure(ukey);
       throw new HttpError(401, 'Wrong username or password');
     }
-    failures.delete(ip);
+    failures.delete(ip); failures.delete(ukey);
     return send(res, 200, { username: user.username, ...issueDevice(b, user.id), serverTime: Date.now() });
   }
 
@@ -327,7 +349,8 @@ async function api(req, res, url) {
   const uid = dev.user_id;
   const me = q.userById.get(uid);
   if (!me) throw new HttpError(401, 'Account no longer exists');
-  const isAdmin = me.username.toLowerCase() === 'rohan';
+  // The server owner is the first account (the one created with the one-time setup code).
+  const isAdmin = me.id === q.firstUser.get()?.id;
 
   if (p === '/api/me' && req.method === 'GET') {
     return send(res, 200, {
@@ -337,7 +360,8 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/sync/pull' && req.method === 'GET') {
-    const since = Math.max(0, Number(url.searchParams.get('since') || 0) | 0);
+    const sinceRaw = Math.floor(Number(url.searchParams.get('since') || 0));
+    const since = Number.isSafeInteger(sinceRaw) && sinceRaw > 0 ? sinceRaw : 0;
     const rows = q.pull.all(uid, since, PULL_LIMIT + 1);
     const more = rows.length > PULL_LIMIT;
     if (more) rows.pop();
@@ -353,14 +377,18 @@ async function api(req, res, url) {
     const changes = Array.isArray(b.changes) ? b.changes : [];
     if (changes.length > 20000) throw new HttpError(413, 'Too many changes in one request');
     let applied = 0; const rejected = []; const invalid = [];
+    let live = q.liveCount.get(uid).n;
     db.exec('BEGIN IMMEDIATE');
     try {
       for (const c of changes) {
         if (!validChange(c)) { invalid.push({ tbl: c?.tbl, id: c?.id }); continue; }
+        const json = c.deleted ? null : JSON.stringify(c.data);
+        if (json && json.length > MAX_RECORD_BYTES) { invalid.push({ tbl: c.tbl, id: c.id }); continue; }
         const cur = q.getRecord.get(uid, c.tbl, c.id);
         if (cur && cur.ts > c.ts) { rejected.push({ tbl: c.tbl, id: c.id }); continue; } // newer version already stored
+        if (!cur && !c.deleted && c.tbl !== 'prefs' && ++live > MAX_LIVE_RECORDS) throw new HttpError(507, 'Storage limit reached for this account');
         seqCounter += 1;
-        q.upsertRecord.run(uid, c.tbl, c.id, c.deleted ? null : JSON.stringify(c.data), c.deleted ? 1 : 0, c.ts, seqCounter, dev.device_no);
+        q.upsertRecord.run(uid, c.tbl, c.id, json, c.deleted ? 1 : 0, c.ts, seqCounter, dev.device_no);
         applied++;
       }
       db.exec('COMMIT');
@@ -384,6 +412,7 @@ async function api(req, res, url) {
       const body = await readRaw(req, MAX_FILE);
       if (!imageType(body)) throw new HttpError(415, 'Only JPEG, PNG, WebP, GIF or HEIC images are accepted');
       if (sha256(body) !== fm[1]) throw new HttpError(400, 'Content does not match its SHA-256 name');
+      if (!q.ownsFile.get(uid, fm[1]) && q.fileCount.get(uid).n >= MAX_FILES_PER_USER) throw new HttpError(507, 'Photo limit reached for this account');
       if (!fs.existsSync(file)) { fs.writeFileSync(file + '.tmp', body, { mode: 0o600 }); fs.renameSync(file + '.tmp', file); }
       q.addFileOwner.run(uid, fm[1]);
       return send(res, 200, { ok: true, size: body.length });
@@ -400,12 +429,15 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/password' && req.method === 'POST') {
+    const ukey = 'u:' + me.username.toLowerCase();
+    if (throttled(ukey)) throw new HttpError(429, 'Too many attempts, try again later');
     const b = await readJson(req);
-    const user = me;
-    if (!verifyPassword(String(b.currentPassword || ''), user.pass_hash)) throw new HttpError(403, 'Current password is wrong');
+    if (!(await verifyPassword(String(b.currentPassword || ''), me.pass_hash))) { noteFailure(ukey); throw new HttpError(403, 'Current password is wrong'); }
     if (String(b.newPassword || '').length < 10) throw new HttpError(400, 'Password must be at least 10 characters');
-    q.setPass.run(hashPassword(String(b.newPassword)), user.id);
-    return send(res, 200, { ok: true });
+    q.setPass.run(await hashPassword(String(b.newPassword)), me.id);
+    // A new password signs out every other device; they sign in again with the new password.
+    const signedOut = q.revokeOthers.run(me.id, dev.device_no).changes;
+    return send(res, 200, { ok: true, signedOut });
   }
 
   // ---- admin: invite code for sign-ups ----
@@ -430,6 +462,7 @@ const MIME = {
 };
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
+  'Strict-Transport-Security': 'max-age=15552000',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
@@ -449,11 +482,14 @@ function serveDownload(req, res, url) {
   fs.createReadStream(apk).pipe(res);
 }
 function serveStatic(req, res, url) {
-  let rel = decodeURIComponent(url.pathname);
+  let rel;
+  try { rel = decodeURIComponent(url.pathname); } catch { throw new HttpError(400, 'Bad URL'); }
   if (rel.endsWith('/')) rel += 'index.html';
   let file = path.normalize(path.join(WEB_DIR, rel));
   if (!file.startsWith(WEB_DIR + path.sep)) { res.writeHead(403); return res.end(); }
-  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) file = path.join(WEB_DIR, 'index.html'); // SPA fallback
+  // Only web assets are served, never helper scripts or dotfiles that live next to them.
+  const servable = MIME[path.extname(file)] && !path.basename(file).startsWith('.');
+  if (!servable || !fs.existsSync(file) || !fs.statSync(file).isFile()) file = path.join(WEB_DIR, 'index.html'); // SPA fallback
   const ext = path.extname(file);
   // Always revalidate (cheap 304s via ETag) so a deploy reaches browsers immediately, even behind
   // Cloudflare, which otherwise stretches short max-age values to hours.

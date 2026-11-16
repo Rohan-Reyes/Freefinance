@@ -56,7 +56,7 @@
 | **More** | Freelance projects and milestones, assets and valuables, planned payouts, multi-currency with custom rates. |
 | **Privacy & security** | Fingerprint / PIN app lock, a privacy mask that hides amounts, no analytics. |
 | **Widgets** | Net worth, budget burn, monthly trends and quick-add widgets for your home screen. |
-| **Backups** | Full JSON backup (including photos and settings) and CSV export; optional Google Drive backup. |
+| **Backups** | Full JSON backup (including photos and settings) and CSV export. |
 
 ## Install
 

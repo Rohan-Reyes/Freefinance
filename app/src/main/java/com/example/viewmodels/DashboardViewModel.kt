@@ -248,17 +248,25 @@ class DashboardViewModel(
 
     private val _isAppLocked = MutableStateFlow(false)
     val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
+    /** False until the app-lock setting has been read, so nothing is drawn before the lock screen can cover it. */
+    private val _lockStateReady = MutableStateFlow(false)
+    val lockStateReady: StateFlow<Boolean> = _lockStateReady.asStateFlow()
+    /** Whether app lock was on when the app started (the biometricLockEnabled flow below starts as false). */
+    private val _lockEnabledAtLaunch = MutableStateFlow(false)
+    val lockEnabledAtLaunch: StateFlow<Boolean> = _lockEnabledAtLaunch.asStateFlow()
     private var lastBackgroundTimestamp: Long = 0L
 
     init {
         viewModelScope.launch {
             try {
                 val bioEnabled = preferencesRepository.biometricLockEnabled.first()
+                _lockEnabledAtLaunch.value = bioEnabled
                 if (bioEnabled) {
                     _isAppLocked.value = true
                 }
             } catch (_: Exception) {
             }
+            _lockStateReady.value = true
         }
 
         viewModelScope.launch {
