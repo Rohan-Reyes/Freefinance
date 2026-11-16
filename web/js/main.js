@@ -1,9 +1,10 @@
-import { store, api } from './store.js?v=16';
-import { PAGES, NAV } from './pages.js?v=16';
-import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=16';
-import { lock, showLockScreen } from './security.js?v=16';
-import { hydratePhotos, viewPhoto } from './images.js?v=16';
-import { renderLanding } from './landing.js?v=16';
+import { store, api } from './store.js?v=17';
+import { PAGES, NAV, NAV_GROUPS } from './pages.js?v=17';
+import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=17';
+import { lock, showLockScreen } from './security.js?v=17';
+import { hydratePhotos, viewPhoto } from './images.js?v=17';
+import { renderLanding } from './landing.js?v=17';
+import { svg } from './icons.js?v=17';
 
 const app = document.getElementById('app');
 applyTheme();
@@ -33,19 +34,34 @@ function route() {
   if (name === 'accounts' && params.length) { name = 'account'; }
   return { name: PAGES[name] ? name : 'dashboard', params, navKey: name === 'account' ? 'accounts' : name };
 }
+const MOBILE_TABS = ['dashboard', 'records', 'accounts', 'budgets'];
 function shell() {
+  const navLink = ([k, ico, label]) => `<a href="#/${k}" data-nav="${k}"><span class="ni">${ico}</span><span>${label}</span></a>`;
   app.innerHTML = `<div class="layout">
     <aside class="side">
-      <div class="brand"><span class="logo">₱</span><div><strong>My Finance</strong><small id="who"></small></div></div>
-      <nav id="nav">${NAV.map(([k, ico, label]) => `<a href="#/${k}" data-nav="${k}"><span class="ni">${ico}</span>${label}</a>`).join('')}</nav>
-      <button class="btn ghost small lock-btn" id="lockBtn" data-action-global="lock" hidden>🔒 Lock now</button>
-      <div class="sync-pill" id="syncPill" data-action-global="sync" title="Sync now"></div>
+      <a class="brand" href="#/dashboard"><span class="logo"></span><div><strong>My Finance</strong><small id="who"></small></div></a>
+      <nav id="nav">${NAV_GROUPS.map(([title, items]) => `<div class="nav-group"><span class="nav-title">${title}</span>${items.map(navLink).join('')}</div>`).join('')}</nav>
+      <div class="side-foot">
+        <button class="btn ghost small lock-btn" id="lockBtn" data-action-global="lock" hidden>${svg('lock')}Lock now</button>
+        <button class="sync-pill" id="syncPill" data-action-global="sync" title="Sync now"></button>
+      </div>
     </aside>
+    <header class="topbar"><a class="brand" href="#/dashboard"><span class="logo"></span></a><strong id="topTitle"></strong>
+      <button class="sync-dot" id="syncDot" data-action-global="sync" aria-label="Sync now"></button></header>
     <main id="main" tabindex="-1"></main>
-    <nav class="bottom-nav">${NAV.filter(([k]) => ['dashboard', 'records', 'accounts', 'subscriptions', 'settings'].includes(k)).map(([k, ico, label]) => `<a href="#/${k}" data-nav="${k}"><span>${ico}</span><small>${label}</small></a>`).join('')}
-      <button class="fab" data-action-global="add" aria-label="Add transaction">＋</button></nav>
+    <nav class="bottom-nav">${NAV.filter(([k]) => MOBILE_TABS.includes(k)).map(([k, ico, label]) => `<a href="#/${k}" data-nav="${k}"><span>${ico}</span><small>${label}</small></a>`).join('')}
+      <button data-action-global="more" id="moreBtn" aria-label="All sections"><span>${svg('apps')}</span><small>More</small></button></nav>
+    <button class="fab" data-action-global="add" aria-label="Add transaction">${svg('add')}</button>
+    <div class="sheet-wrap" id="moreSheet" hidden><div class="sheet" role="dialog" aria-label="All sections">
+      <div class="sheet-grab"></div>${NAV_GROUPS.map(([title, items]) => `<span class="nav-title">${title}</span><div class="sheet-grid">${items.map(([k, ico, label]) => `<a href="#/${k}" data-nav="${k}">${ico}<small>${label}</small></a>`).join('')}</div>`).join('')}
+    </div></div>
   </div>`;
   document.getElementById('who').textContent = store.auth.username;
+}
+function toggleMore(open) {
+  const sh = document.getElementById('moreSheet'); if (!sh) return;
+  sh.hidden = !open;
+  document.getElementById('moreBtn')?.classList.toggle('on', open);
 }
 function render() {
   if (!store.auth) return authScreen();
@@ -60,16 +76,21 @@ function render() {
   hydratePhotos(main);
   document.title = `${page.title} · My Finance`;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r.navKey));
+  const tt = document.getElementById('topTitle'); if (tt) tt.textContent = page.title;
+  document.getElementById('moreBtn')?.classList.toggle('on', !MOBILE_TABS.includes(r.navKey));
   if (filterKey) { const el = main.querySelector(`[data-filter="${filterKey}"]`); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch { /* not a text input */ } } }
   renderSyncPill();
 }
 function renderSyncPill() {
   const pill = document.getElementById('syncPill'); if (!pill) return;
   const s = store.status, pend = store.pending.size;
-  pill.className = `sync-pill ${s.syncing ? 'busy' : s.error ? 'err' : 'ok'}`;
-  pill.innerHTML = s.syncing ? '⟳ Syncing…' : s.error ? `⚠ ${esc(s.online ? 'Sync error' : 'Offline')}${pend ? ` · ${pend} pending` : ''}`
-    : `✓ Synced${s.lastSync ? ' ' + new Date(s.lastSync).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}${pend ? ` · ${pend} pending` : ''}`;
-  pill.title = s.error ? s.error : s.lastSync ? `Last sync ${fmtDateTime(s.lastSync)} — click to sync now` : 'Click to sync now';
+  const state = s.syncing ? 'busy' : s.error ? 'err' : 'ok';
+  pill.className = `sync-pill ${state}`;
+  pill.innerHTML = s.syncing ? `${svg('sync')}<span>Syncing…</span>` : s.error ? `${svg('warn')}<span>${esc(s.online ? 'Sync error' : 'Offline')}${pend ? ` · ${pend} pending` : ''}</span>`
+    : `${svg('check')}<span>Synced${s.lastSync ? ' ' + new Date(s.lastSync).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}${pend ? ` · ${pend} pending` : ''}</span>`;
+  pill.title = s.error ? s.error : s.lastSync ? `Last sync ${fmtDateTime(s.lastSync)}. Click to sync now.` : 'Click to sync now';
+  const dot = document.getElementById('syncDot');
+  if (dot) { dot.className = `sync-dot ${state}`; dot.innerHTML = s.error ? svg('warn') : svg('sync'); dot.title = pill.title; }
 }
 
 // ---------------------------------------------------------------- events (delegated; CSP forbids inline handlers)
@@ -79,10 +100,12 @@ document.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-action-global]');
   if (g) {
     if (g.dataset.actionGlobal === 'sync') store.sync().then(() => toast('Synced')).catch((x) => toast(x.message, 'err'));
-    if (g.dataset.actionGlobal === 'add') (await import('./pages.js?v=16')).openTxForm(null);
+    if (g.dataset.actionGlobal === 'add') { toggleMore(false); (await import('./pages.js?v=17')).openTxForm(null); }
     if (g.dataset.actionGlobal === 'lock') lock.lockNow();
+    if (g.dataset.actionGlobal === 'more') toggleMore(document.getElementById('moreSheet')?.hidden);
     return;
   }
+  if (e.target.closest('#moreSheet')) { if (e.target.id === 'moreSheet' || e.target.closest('a')) toggleMore(false); return; }
   const el = e.target.closest('#main [data-action]');
   if (!el || el.matches('input[type=checkbox]')) return;
   const r = route(), fn = PAGES[r.name].actions?.[el.dataset.action];
@@ -112,6 +135,7 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.tx-row')) { e.preventDefault(); e.target.click(); }
+  if (e.key === 'Escape') toggleMore(false);
 });
 
 // ---------------------------------------------------------------- boot
@@ -132,9 +156,21 @@ async function start() {
   await store.load();
   applyTheme();
   let queued = false;
-  import('./logic.js?v=16').then((L) => { L.refreshLiveRates(); setInterval(() => L.refreshLiveRates(), 3600 * 1000); });
-  store.subscribe(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; applyTheme(); render(); }); });
-  window.addEventListener('hashchange', () => { render(); document.getElementById('main')?.scrollTo?.(0, 0); window.scrollTo(0, 0); });
+  import('./logic.js?v=17').then((L) => { L.refreshLiveRates(); setInterval(() => L.refreshLiveRates(), 3600 * 1000); });
+  // Re-render only when data changed; sync status updates just the sync indicators.
+  let renderedVersion = -1, renderedHash = '';
+  const schedule = (force = false) => {
+    if (queued) return; queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (!force && store.version === renderedVersion && location.hash === renderedHash) return;
+      renderedVersion = store.version; renderedHash = location.hash;
+      applyTheme(); render();
+    });
+  };
+  store.subscribe(() => schedule());
+  store.onStatus(() => { if (!store.auth) return render(); renderSyncPill(); if (route().name === 'settings') schedule(true); });
+  window.addEventListener('hashchange', () => { toggleMore(false); renderedHash = location.hash; render(); document.getElementById('main')?.scrollTo?.(0, 0); window.scrollTo(0, 0); });
   render();
   enforceLock();
   const doSync = () => store.sync().catch((e) => { if (e.status === 401) { toast('Session ended — please sign in again', 'err'); setTimeout(() => location.reload(), 1200); } });

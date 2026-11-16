@@ -109,6 +109,7 @@ class Store {
     this.status = { syncing: false, lastSync: 0, error: null, online: true };
     this.version = 0;
     this.listeners = new Set();
+    this.statusListeners = new Set();
     this._saveTimer = null;
     this._syncTimer = null;
     this._syncing = null;
@@ -117,6 +118,9 @@ class Store {
 
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit() { this.version++; for (const fn of this.listeners) fn(); }
+  /** Sync status changes (syncing / synced / error) only: the page is not re-rendered for these. */
+  onStatus(fn) { this.statusListeners.add(fn); return () => this.statusListeners.delete(fn); }
+  emitStatus() { for (const fn of this.statusListeners) fn(); }
 
   // ---- persistence ----
   async load() {
@@ -242,7 +246,7 @@ class Store {
     if (!this.auth) return;
     if (this._syncing) { this._again = true; return this._syncing; }
     this.status = { ...this.status, syncing: true };
-    this.emit();
+    this.emitStatus();
     this._syncing = (async () => {
       try {
         await this.push();
@@ -254,7 +258,7 @@ class Store {
         throw e;
       } finally {
         this._syncing = null;
-        this.emit();
+        this.emitStatus();
         this.scheduleSave();
         if (this._again) { this._again = false; this.sync().catch(() => {}); }
       }

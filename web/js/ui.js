@@ -1,24 +1,36 @@
 // UI helpers: escaping, formatting, modals/forms, toasts, small SVG charts.
-import { symbol, base } from './logic.js?v=16';
-import { store } from './store.js?v=16';
+import { symbol, base } from './logic.js?v=17';
+import { store } from './store.js?v=17';
+import { svg } from './icons.js?v=17';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---- local (non-synced) view preferences ----
+// Cached in memory: money() reads hideMoney for every amount on the page.
+const prefCache = new Map();
 export const viewPrefs = {
-  get(k, d) { try { const v = localStorage.getItem('ff_view_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('ff_view_' + k, JSON.stringify(v)); } catch { /* ignore */ } },
+  get(k, d) {
+    if (!prefCache.has(k)) { let v = null; try { const raw = localStorage.getItem('ff_view_' + k); v = raw == null ? null : JSON.parse(raw); } catch { v = null; } prefCache.set(k, v); }
+    const v = prefCache.get(k); return v == null ? d : v;
+  },
+  set(k, v) { prefCache.set(k, v); try { localStorage.setItem('ff_view_' + k, JSON.stringify(v)); } catch { /* ignore */ } },
 };
 
 export function money(amount, currency = base(), { sign = false, hideable = true } = {}) {
   if (hideable && viewPrefs.get('hideMoney', false)) return `${symbol(currency)}••••`;
   const n = Number(amount) || 0;
-  const s = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = NUM.format(Math.abs(n));
   const pre = n < 0 ? '−' : sign && n > 0 ? '+' : '';
   return `${pre}${symbol(currency)}${s}`;
 }
-export const fmtDate = (ms, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => (ms ? new Date(ms).toLocaleDateString(undefined, opts) : '—');
-export const fmtDateTime = (ms) => (ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+// Intl formatters are costly to create, so they are built once and reused.
+const NUM = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const DATE_FMTS = new Map();
+const dateFmt = (opts) => { const k = JSON.stringify(opts); let f = DATE_FMTS.get(k); if (!f) { f = new Intl.DateTimeFormat(undefined, opts); DATE_FMTS.set(k, f); } return f; };
+const DATE_DEFAULT = { month: 'short', day: 'numeric', year: 'numeric' };
+const DATETIME = { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
+export const fmtDate = (ms, opts = DATE_DEFAULT) => (ms ? dateFmt(opts).format(ms) : '—');
+export const fmtDateTime = (ms) => (ms ? dateFmt(DATETIME).format(ms) : '—');
 export const toInputDate = (ms) => { if (!ms) return ''; const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 export const toInputDateTime = (ms) => { if (!ms) return ''; const d = new Date(ms); return `${toInputDate(ms)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 export const fromInputDate = (s) => (s ? new Date(s.length <= 10 ? s + 'T00:00' : s).getTime() : null);
@@ -55,7 +67,7 @@ export function celebrate(title, amountText, kind = 'pos') {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const el = document.createElement('div');
   el.className = 'celebrate';
-  el.innerHTML = `<div class="cel-box ${kind}"><div class="cel-check">✓</div><strong>${esc(amountText)}</strong><span>${esc(title)}</span></div>`;
+  el.innerHTML = `<div class="cel-box ${kind}"><div class="cel-check">${svg('check')}</div><strong>${esc(amountText)}</strong><span>${esc(title)}</span></div>`;
   document.body.appendChild(el);
   setTimeout(() => el.classList.add('out'), 1100);
   setTimeout(() => el.remove(), 1500);
@@ -104,7 +116,7 @@ export function modal({ title, body, actions = [], wide = false, onOpen }) {
     const wrap = document.createElement('div');
     wrap.className = 'modal-wrap';
     wrap.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">✕</button></header>
+      <header><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">${svg('close')}</button></header>
       <div class="modal-body">${body}</div>
       <footer>${actions.map((a, i) => `<button class="btn ${a.kind || ''}" data-act="${i}" type="${a.submit ? 'submit' : 'button'}">${esc(a.label)}</button>`).join('')}</footer>
     </div>`;

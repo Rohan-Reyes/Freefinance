@@ -1,6 +1,7 @@
 // Finance logic mirrored from the Android app (FinanceRepository, DAOs, DashboardViewModel,
 // CurrencyUtils, RecurrenceHelper, ForecastCashFlowUseCase) so both clients show the same numbers.
-import { store, SCHEMA } from './store.js?v=16';
+import { store, SCHEMA } from './store.js?v=17';
+import { svg } from './icons.js?v=17';
 
 // ---------------- currencies (CurrencyUtils) ----------------
 export const CURRENCIES = [
@@ -69,7 +70,8 @@ export const ICONS = {
   ic_shopping: '🛍️', ic_savings: '🐷', ic_education: '🎓', ic_category: '🏷️', ic_asset: '💎', ic_gift: '🎁',
   ic_travel: '✈️', ic_pets: '🐾', ic_bills: '🧾', ic_coffee: '☕', ic_groceries: '🛒', ic_phone: '📱',
 };
-export const icon = (k) => ICONS[k] || '🏷️';
+/** Category icon as inline SVG (the emoji above are kept only as names for the icon picker). */
+export const icon = (k) => svg(k);
 
 const up = (s) => String(s || '').toUpperCase();
 export const isCleared = (t) => up(t.status) === 'CLEARED';

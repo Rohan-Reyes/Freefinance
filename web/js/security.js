@@ -1,6 +1,7 @@
 // App lock (4-digit PIN) — mirrors the Android BiometricLockScreen behaviour, per browser.
 // The PIN is never stored: only a salted PBKDF2 hash, in this browser's localStorage.
-import { viewPrefs, esc, toast } from './ui.js?v=16';
+import { viewPrefs, esc, toast } from './ui.js?v=17';
+import { svg } from './icons.js?v=17';
 
 const KEY = 'ff_lock';
 const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
@@ -76,7 +77,7 @@ function padHTML(title, sub) {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
   return `<div class="pin-box"><span class="logo">₱</span><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p>
     <div class="pin-dots">${'<i></i>'.repeat(4)}</div><p class="pin-msg"></p>
-    <div class="pin-pad">${keys.map((k) => (k ? `<button type="button" data-k="${k}">${k}</button>` : '<span></span>')).join('')}</div>
+    <div class="pin-pad">${keys.map((k) => (k ? `<button type="button" data-k="${k}"${k === '⌫' ? ' aria-label="Delete"' : ''}>${k === '⌫' ? svg('backspace') : k}</button>` : '<span></span>')).join('')}</div>
     <div class="pin-extra"></div></div>`;
 }
 /** Shows a PIN pad; resolves true when the correct PIN is entered, false if cancelled. */

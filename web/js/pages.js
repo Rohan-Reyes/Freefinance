@@ -1,14 +1,15 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
-import { store } from './store.js?v=16';
-import * as L from './logic.js?v=16';
-import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=16';
-import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=16';
-import { BANKS, bankFor } from './banks.js?v=16';
-import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=16';
+import { store } from './store.js?v=17';
+import * as L from './logic.js?v=17';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=17';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=17';
+import { BANKS, bankFor } from './banks.js?v=17';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=17';
+import { svg } from './icons.js?v=17';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
-} from './ui.js?v=16';
+} from './ui.js?v=17';
 
 // ---------------------------------------------------------------- shared helpers
 const sortByName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
@@ -23,14 +24,22 @@ function categoryOptions(type, blank = true) {
   const cats = store.all('categories').filter((c) => !type || c.type === type).sort(sortByName);
   const roots = cats.filter((c) => c.parent_category_id == null || !cats.some((p) => p.id === c.parent_category_id));
   return [...(blank ? [['', '— No category —']] : []),
-    ...roots.flatMap((r) => [[r.id, `${L.icon(r.icon_res_id)} ${r.name}`], ...cats.filter((c) => c.parent_category_id === r.id).map((c) => [c.id, `   ↳ ${L.icon(c.icon_res_id)} ${c.name}`])])];
+    ...roots.flatMap((r) => [[r.id, r.name], ...cats.filter((c) => c.parent_category_id === r.id).map((c) => [c.id, `   ↳ ${c.name}`])])];
 }
 const accName = (id) => store.get('accounts', id)?.name || 'Deleted account';
 const catOf = (id) => store.get('categories', id);
 const catLabel = (id) => { const c = catOf(id); return c ? `${L.icon(c.icon_res_id)} ${esc(c.name)}` : '<span class="muted">Uncategorized</span>'; };
 const empty = (text, cta = '') => `<div class="empty">${esc(text)}${cta}</div>`;
 const curOpts = () => L.CURRENCIES.map((c) => [c.code, `${c.code} — ${c.name}`]);
-const plus = (label, action, extra = '') => `<button class="btn primary" data-action="${action}" ${extra}>＋ ${esc(label)}</button>`;
+const plus = (label, action, extra = '') => `<button class="btn primary" data-action="${action}" ${extra}>${svg('add')}${esc(label)}</button>`;
+/** Account logo: real bank/e-wallet mark when recognised, otherwise a coloured initial. */
+function accMark(a, size = 34) {
+  const b = detectBrand(a.name, a.linked_app_package);
+  if (b) return brandMark(b, size);
+  const c = argbToCss(a.color);
+  return `<span class="brand-mark" style="width:${size}px;height:${size}px;background:${c}22;color:${c};font-size:${Math.round(size * 0.44)}px">${esc((a.name || '?').slice(0, 1).toUpperCase())}</span>`;
+}
+const prio = (p) => `<i class="prio ${p === 'HIGH' ? 'hi' : p === 'LOW' ? 'lo' : 'mid'}" title="${p === 'HIGH' ? 'High' : p === 'LOW' ? 'Low' : 'Normal'} priority"></i>`;
 const kpi = (label, value, cls = '', sub = '') => `<div class="kpi ${cls}"><span>${esc(label)}</span><strong>${value}</strong>${sub ? `<small>${sub}</small>` : ''}</div>`;
 const amountClass = (t) => (t.type === 'Income' ? 'pos' : t.type === 'Expense' ? 'neg' : 'xfer');
 function txAmount(t, perspectiveAccountId) {
@@ -46,12 +55,12 @@ function txRow(t, perspectiveAccountId) {
   const title = t.note || catOf(t.category_id)?.name || t.type;
   const where = t.type === 'Transfer' ? `${esc(accName(t.account_id))} → ${esc(accName(t.to_account_id))}` : esc(accName(t.account_id));
   return `<div class="tx-row" data-action="editTx" data-id="${t.id}" tabindex="0">
-    <div class="tx-icon ${amountClass(t)}">${t.type === 'Transfer' ? '⇄' : esc(L.icon(catOf(t.category_id)?.icon_res_id))}</div>
+    <div class="tx-icon ${amountClass(t)}">${t.type === 'Transfer' ? svg('swap') : L.icon(catOf(t.category_id)?.icon_res_id)}</div>
     <div class="tx-main"><strong>${esc(title)}</strong>
       <small>${where} · ${t.category_id ? catLabel(t.category_id) : esc(t.type)} · ${fmtDateTime(t.date)}</small>
       ${labels.length ? `<div class="chips">${labels.map((l) => `<span class="chip">${esc(l)}</span>`).join('')}</div>` : ''}</div>
     <div class="tx-amt ${amountClass(t)}">${txAmount(t, perspectiveAccountId)}
-      ${isSha(t.proof_sha256) ? `<button class="badge photo-badge" data-photo="${t.proof_sha256}" data-title="${esc(t.note || 'Proof')}">📎 Photo</button>` : t.proof_image_uri ? '<small class="badge" title="Stored on the phone only">📎 On phone</small>' : ''}
+      ${isSha(t.proof_sha256) ? `<button class="badge photo-badge" data-photo="${t.proof_sha256}" data-title="${esc(t.note || 'Proof')}">${svg('attach')}Photo</button>` : t.proof_image_uri ? `<small class="badge" title="Stored on the phone only">${svg('attach')}On phone</small>` : ''}
       ${t.status === 'Planned' ? '<small class="badge warn">Planned</small>' : ''}
       ${t.recurrence_rule && t.recurrence_rule !== 'None' ? `<small class="badge">${esc(t.recurrence_rule)}</small>` : ''}</div>
   </div>`;
@@ -77,7 +86,7 @@ export async function openTxForm(existing, preset = {}) {
   const t = existing || { type: 'Expense', date: Date.now(), status: 'Cleared', recurrence_rule: 'None', account_id: store.all('accounts')[0].id, ...preset };
   const values = { ...t, labels: L.labelsOf(t).join(', ') };
   let proof = isSha(t.proof_sha256) ? t.proof_sha256 : null, proofChanged = false;
-  const paintProof = (w) => { const box = w.querySelector('.proof-box'); box.innerHTML = proof ? `<img data-sha="${proof}" alt="Proof photo"><button type="button" class="btn small ghost danger" data-proof-remove>Remove photo</button>` : (t.proof_image_uri && !proofChanged ? '<small class="muted">📎 A photo is attached on the phone (not uploaded yet).</small>' : '<small class="muted">No photo attached.</small>'); hydratePhotos(box); };
+  const paintProof = (w) => { const box = w.querySelector('.proof-box'); box.innerHTML = proof ? `<img data-sha="${proof}" alt="Proof photo"><button type="button" class="btn small ghost danger" data-proof-remove>Remove photo</button>` : (t.proof_image_uri && !proofChanged ? `<small class="muted">${svg('attach')} A photo is attached on the phone (not uploaded yet).</small>` : '<small class="muted">No photo attached.</small>'); hydratePhotos(box); };
   const toggle = (wrap) => {
     const type = wrap.querySelector('[name=type]').value;
     wrap.querySelector('[name=to_account_id]').closest('.field').style.display = type === 'Transfer' ? '' : 'none';
@@ -90,7 +99,7 @@ export async function openTxForm(existing, preset = {}) {
     onOpen: (w) => {
       toggle(w); w.querySelector('[name=type]').addEventListener('change', () => toggle(w));
       w.querySelector('.form').insertAdjacentHTML('beforeend', `<div class="field"><span>Proof photo / receipt</span><div class="proof-box"></div>
-        <label class="btn small">📷 Attach photo<input type="file" accept="image/*" capture="environment" hidden data-proof-file></label></div>`);
+        <label class="btn small">${svg('camera')}Attach photo<input type="file" accept="image/*" capture="environment" hidden data-proof-file></label></div>`);
       paintProof(w);
       w.querySelector('[data-proof-file]').addEventListener('change', async (e) => {
         const f = e.target.files?.[0]; if (!f) return;
@@ -133,8 +142,8 @@ const monthStart = () => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 
 const DASH_CARDS = [
   ['TOTAL_BALANCE', 'Total Balance', 'Total liquid balance and active account count overview', () => {
     const accs = store.all('accounts').filter((a) => a.parent_account_id == null).sort((a, b) => L.convert(L.balanceOf(b), b.currency_code, L.base()) - L.convert(L.balanceOf(a), a.currency_code, L.base()));
-    return `<h3>Accounts & sub-accounts <a href="#/accounts" class="more">All</a></h3><p class="muted">${store.all('accounts').length} account(s) · ${store.all('accounts').filter((a) => a.include_in_tally).length} in total</p>
-      ${accs.slice(0, 6).map((a) => `<a class="mini-row link" href="#/accounts/${a.id}"><span><span class="dot" style="background:${argbToCss(a.color)}"></span> ${esc(a.name)}</span><strong class="${L.balanceOf(a) < 0 ? 'neg' : ''}">${money(L.balanceOf(a), a.currency_code)}</strong></a>`).join('') || empty('No accounts configured')}`; }],
+    return `<h3>Accounts <a href="#/accounts" class="more">All</a></h3>
+      ${accs.slice(0, 6).map((a) => `<a class="mini-row link acc-mini" href="#/accounts/${a.id}"><span>${accMark(a, 28)}${esc(a.name)}</span><strong class="${L.balanceOf(a) < 0 ? 'neg' : ''}">${money(L.balanceOf(a), a.currency_code)}</strong></a>`).join('') || empty('No accounts configured')}`; }],
   ['MONEY_FLOW', 'Money Flow', 'Income vs expense breakdown and net cash flow gauge', () => {
     const all = L.moneyFlow(), m = L.moneyFlow(monthStart()), tot = all.income + all.expense;
     return `<h3>Money flow breakdown</h3><div class="split two"><i style="width:${tot ? (all.income / tot) * 100 : 50}%"></i></div>
@@ -186,7 +195,7 @@ const DASH_CARDS = [
   ['SPENDING_TRENDS', 'Monthly Spending Trends', 'Six months of income vs expenses', () => `<h3>Monthly spending trends</h3>${barPairs(L.monthlyTrends(6), { fmt: (v) => money(v) })}`, true],
   ['PLANNED_PAYOUTS', 'Planned Payouts', 'Scheduled one-off commitments', () => {
     const p = store.all('planned_payouts').filter((x) => x.status === 'PENDING').sort((a, b) => a.due_date - b.due_date);
-    return `<h3>Planned payouts <a href="#/subscriptions" class="more">All</a></h3>${p.length ? p.slice(0, 5).map((x) => `<div class="mini-row"><span>${x.priority === 'HIGH' ? '🔴' : x.priority === 'LOW' ? '⚪' : '🟡'} ${esc(x.title)}<br><small class="muted">due ${fmtDate(x.due_date)}${x.due_date < Date.now() ? ' · <b class="neg">overdue</b>' : ''}</small></span><strong>${money(x.amount, x.currency_code)}</strong></div>`).join('') : empty("No pending planned payouts. You're all settled!")}`; }],
+    return `<h3>Planned payouts <a href="#/subscriptions" class="more">All</a></h3>${p.length ? p.slice(0, 5).map((x) => `<div class="mini-row"><span>${prio(x.priority)} ${esc(x.title)}<br><small class="muted">due ${fmtDate(x.due_date)}${x.due_date < Date.now() ? ' · <b class="neg">overdue</b>' : ''}</small></span><strong>${money(x.amount, x.currency_code)}</strong></div>`).join('') : empty("No pending planned payouts. You're all settled!")}`; }],
   ['RECENT', 'Recent Transactions', 'Your latest ledger entries', () => {
     const recent = store.all('transactions').sort((a, b) => b.date - a.date || b.id - a.id).slice(0, 8);
     return `<h3>Recent transactions <a href="#/records" class="more">All</a></h3>${recent.length ? recent.map((t) => txRow(t)).join('') : empty('No Transactions Logged Yet', ` ${plus('Add one', 'quick', 'data-type="Expense"')}`)}`; }, true],
@@ -201,31 +210,29 @@ const dashboard = {
   render() {
     const inclAssets = viewPrefs.get('includeAssets', false), nw = L.netWorth(inclAssets), b = L.base();
     const { order, hidden } = dashLayout(), byId = Object.fromEntries(DASH_CARDS.map((c) => [c[0], c]));
-    if (!serverInfo && String(store.auth?.username || '').toLowerCase() === 'rohan') settings.loadServerInfo();
-    const inv = serverInfo?.me?.admin ? inviteCard() : '';
+    const m = L.moneyFlow(monthStart());
     return `
     <section class="hero">
-      <div><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'balance'} · ${esc(b)}</span>
-        <h1 class="hero-num">${money(nw.total)}</h1>
-        <div class="hero-sub"><span>Cash ${money(nw.cash)}</span><span>Assets ${money(nw.assets)}</span>${nw.excluded ? `<span>${nw.excluded} account(s) excluded</span>` : ''}</div></div>
+      <div class="hero-top"><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'balance'} · ${esc(b)}</span>
+        <div class="hero-tools"><label class="switch"><input type="checkbox" data-action="toggleAssets" ${inclAssets ? 'checked' : ''}><span>Include assets</span></label>
+        <a class="hero-icon" href="#/customize" title="Customize dashboard" aria-label="Customize dashboard">${svg('tune')}</a></div></div>
+      <h1 class="hero-num">${money(nw.total)}</h1>
+      <div class="hero-stats"><span><small>Cash</small>${money(nw.cash)}</span><span><small>Assets</small>${money(nw.assets)}</span>
+        <span><small>In this month</small><b class="pos">${money(m.income)}</b></span><span><small>Out this month</small><b class="neg">${money(m.expense)}</b></span></div>
       <div class="hero-actions">
-        <button class="btn" data-action="quick" data-type="Expense">− Expense</button>
-        <button class="btn" data-action="quick" data-type="Income">＋ Income</button>
-        <button class="btn" data-action="quick" data-type="Transfer">⇄ Transfer</button>
-        ${undo.action ? '<button class="btn" data-action="undo">↶ Undo</button>' : ''}
-        <label class="switch"><input type="checkbox" data-action="toggleAssets" ${inclAssets ? 'checked' : ''}> Include assets</label>
-        <a class="btn" href="#/customize" title="Customize dashboard">⚙ Customize</a>
+        <button class="btn" data-action="quick" data-type="Expense">${svg('remove')}Expense</button>
+        <button class="btn" data-action="quick" data-type="Income">${svg('add')}Income</button>
+        <button class="btn" data-action="quick" data-type="Transfer">${svg('swap')}Transfer</button>
+        ${undo.action ? `<button class="btn" data-action="undo">${svg('undo')}Undo</button>` : ''}
       </div>
     </section>
-    <div class="grid">${inv}${order.filter((id) => !hidden.has(id)).map((id) => `<div class="card ${byId[id][4] ? 'span2' : ''}" data-card="${id}">${byId[id][3]()}</div>`).join('') || empty('All cards are hidden — use Customize to show some.')}</div>`;
+    <div class="grid dash">${order.filter((id) => !hidden.has(id)).map((id) => `<div class="card ${byId[id][4] ? 'span2' : ''}" data-card="${id}">${byId[id][3]()}</div>`).join('') || empty('All cards are hidden — use Customize to show some.')}</div>`;
   },
   actions: {
     quick: (el) => openTxForm(null, { type: el.dataset.type }),
     toggleAssets: (el) => { viewPrefs.set('includeAssets', el.checked); store.emit(); },
     editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
     undo: () => { undo.perform(); store.emit(); },
-    newInvite: () => settings.actions.newInvite(),
-    closeInvite: () => settings.actions.closeInvite(),
   },
 };
 
@@ -289,22 +296,22 @@ const accounts = {
     const nw = L.netWorth(false);
     const negatives = store.all('accounts').filter((a) => L.balanceOf(a) < 0);
     return `<div class="page-head"><div><h1>Accounts</h1><p class="muted">Total in tally: <strong>${money(nw.cash)}</strong></p></div>
-      <div class="row">${plus('Account', 'addAccount')}<button class="btn" data-action="addSub">＋ Sub-account</button></div></div>
-      ${negatives.length ? `<div class="banner warn">⚠ Negative balance detected in ${negatives.map((a) => `<strong>${esc(a.name)}</strong>`).join(', ')}. ${negatives.map((a) => `<button class="btn small" data-action="adjust" data-id="${a.id}">Fix ${esc(a.name)} ➔</button>`).join(' ')}</div>` : ''}
+      <div class="row">${plus('Account', 'addAccount')}<button class="btn" data-action="addSub">${svg('add')}Sub-account</button></div></div>
+      ${negatives.length ? `<div class="banner warn">${svg('warn')} Negative balance detected in ${negatives.map((a) => `<strong>${esc(a.name)}</strong>`).join(', ')}. ${negatives.map((a) => `<button class="btn small" data-action="adjust" data-id="${a.id}">Fix ${esc(a.name)} ${svg('arrow')}</button>`).join(' ')}</div>` : ''}
       ${tree.length ? `<div class="list">${tree.map(({ a, depth }) => {
         const bal = L.balanceOf(a);
         const conv = a.currency_code !== L.base() ? `<small class="muted">≈ ${money(L.convert(bal, a.currency_code, L.base()))}</small>` : '';
         const locked = a.is_locked || (a.locked_until && a.locked_until > Date.now());
         return `<div class="acc-row ${depth ? 'sub' : ''}">
-          ${(() => { const b = !depth && detectBrand(a.name, a.linked_app_package); return b ? brandMark(b, 34) : depth ? `<span class="dot" style="background:${argbToCss(a.color)}"></span>` : `<span class="brand-mark" style="width:34px;height:34px;background:${argbToCss(a.color)}22;color:${argbToCss(a.color)};font-size:15px">${esc((a.name || '?').slice(0, 1).toUpperCase())}</span>`; })()}
+          ${depth ? `<span class="dot" style="background:${argbToCss(a.color)}"></span>` : accMark(a, 38)}
           <a class="acc-main" href="#/accounts/${a.id}"><strong>${esc(a.name)}</strong>
             <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${locked ? ' · Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
           <div class="acc-bal"><strong class="${bal < 0 ? 'neg' : ''}">${money(bal, a.currency_code)}</strong>${conv}</div>
           <div class="row-actions">
-            ${bankFor(a.linked_app_package) ? `<a class="icon-btn launch" title="Open ${esc(bankFor(a.linked_app_package)[1])} website" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">↗</a>` : ''}
-            <button class="icon-btn" title="Adjust balance" data-action="adjust" data-id="${a.id}">⚖</button>
-            <button class="icon-btn" title="Edit" data-action="editAccount" data-id="${a.id}">✎</button>
-            <button class="icon-btn" title="Delete" data-action="deleteAccount" data-id="${a.id}">🗑</button></div>
+            ${bankFor(a.linked_app_package) ? `<a class="icon-btn launch" title="Open ${esc(bankFor(a.linked_app_package)[1])} website" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">${svg('open')}</a>` : ''}
+            <button class="icon-btn" title="Adjust balance" data-action="adjust" data-id="${a.id}">${svg('calibrate')}</button>
+            <button class="icon-btn" title="Edit" data-action="editAccount" data-id="${a.id}">${svg('edit')}</button>
+            <button class="icon-btn" title="Delete" data-action="deleteAccount" data-id="${a.id}">${svg('delete')}</button></div>
         </div>`;
       }).join('')}</div>` : empty('No accounts yet. Add your cash, bank and e-wallet accounts to start tracking.')}`;
   },
@@ -331,11 +338,11 @@ const accountDetail = {
     if (!a) return empty('Account not found');
     const txs = store.all('transactions').filter((t) => t.account_id === a.id || t.to_account_id === a.id).sort((x, y) => y.date - x.date || y.id - x.id);
     const subs = store.all('accounts').filter((s) => s.parent_account_id === a.id);
-    return `<div class="page-head"><div><a href="#/accounts" class="muted">← Accounts</a><h1><span class="dot big" style="background:${argbToCss(a.color)}"></span>${esc(a.name)}</h1>
+    return `<div class="page-head"><div><a href="#/accounts" class="muted">← Accounts</a><h1>${accMark(a, 40)}${esc(a.name)}</h1>
       <p class="muted">${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}</p></div>
-      <div class="row"><button class="btn" data-action="add" data-type="Income">＋ Income</button><button class="btn" data-action="add" data-type="Expense">− Expense</button>
-      <button class="btn" data-action="add" data-type="Transfer">⇄ Transfer</button><button class="btn" data-action="edit">Edit</button>${bankFor(a.linked_app_package) ? `<a class="btn primary" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">Launch ${esc(bankFor(a.linked_app_package)[1])} ↗</a>` : ''}</div></div>
-      ${L.balanceOf(a) < 0 ? `<div class="banner warn">⚠ Negative balance detected. Tap to calibrate the real balance. <button class="btn small" data-action="calibrate">Fix balance ➔</button></div>` : ''}
+      <div class="row"><button class="btn" data-action="add" data-type="Income">${svg('add')}Income</button><button class="btn" data-action="add" data-type="Expense">${svg('remove')}Expense</button>
+      <button class="btn" data-action="add" data-type="Transfer">${svg('swap')}Transfer</button><button class="btn" data-action="edit">Edit</button>${bankFor(a.linked_app_package) ? `<a class="btn primary" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">Open ${esc(bankFor(a.linked_app_package)[1])} ${svg('open')}</a>` : ''}</div></div>
+      ${L.balanceOf(a) < 0 ? `<div class="banner warn">${svg('warn')} Negative balance detected. Calibrate it to the real balance. <button class="btn small" data-action="calibrate">Fix balance ${svg('arrow')}</button></div>` : ''}
       <div class="kpis big">${kpi('Current balance', `<button class="linkish" data-action="calibrate" title="Tap to calibrate">${money(L.balanceOf(a), a.currency_code)}</button>`)}${kpi('Starting balance', money(a.initial_balance, a.currency_code))}${kpi('Transactions', String(txs.length))}</div>
       ${(() => { const cm = L.cashMovement(a.id); return `<div class="card"><h3>Cash movement summary <small class="badge ${cm.net >= 0 ? 'pos' : 'neg'}">${cm.net >= 0 ? 'Net Positive' : 'Net Outflow'}</small></h3><div class="split two"><i style="width:${cm.inflow + cm.outflow ? (cm.inflow / (cm.inflow + cm.outflow)) * 100 : 50}%"></i></div><div class="kpis">${kpi('Total inflow', money(cm.inflow, a.currency_code), 'pos')}${kpi('Total outflow', money(cm.outflow, a.currency_code), 'neg')}${kpi('Net', money(cm.net, a.currency_code, { sign: true }), cm.net >= 0 ? 'pos' : 'neg')}</div></div>`; })()}
       ${subs.length ? `<h3>Sub-accounts</h3><div class="list">${subs.map((s) => `<a class="mini-row link" href="#/accounts/${s.id}"><span>${esc(s.name)} <small class="muted">${esc(s.sub_account_type || '')}</small></span><strong>${money(L.balanceOf(s), s.currency_code)}</strong></a>`).join('')}</div>` : ''}
@@ -351,6 +358,8 @@ const accountDetail = {
 
 // ---------------------------------------------------------------- RECORDS
 const recordFilter = { q: '', type: '', account: '', category: '', status: '', month: '' };
+const PAGE_SIZE = 120;
+let recordLimit = PAGE_SIZE;
 const records = {
   title: 'Records',
   render() {
@@ -366,7 +375,7 @@ const records = {
     const inc = txs.filter((t) => t.type === 'Income' && t.status === 'Cleared').reduce((s, t) => s + L.convert(t.amount, store.get('accounts', t.account_id)?.currency_code || L.base(), L.base()), 0);
     const exp = txs.filter((t) => t.type === 'Expense' && t.status === 'Cleared').reduce((s, t) => s + L.convert(t.amount, store.get('accounts', t.account_id)?.currency_code || L.base(), L.base()), 0);
     const groups = new Map();
-    for (const t of txs.slice(0, 600)) { const k = fmtDate(t.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    for (const t of txs.slice(0, recordLimit)) { const k = fmtDate(t.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
     const sel = (name, opts, v) => `<select data-filter="${name}">${opts.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
     return `<div class="page-head"><div><h1>Records</h1><p class="muted">${txs.length} transaction(s) · income ${money(inc)} · expenses ${money(exp)}</p></div>${plus('Transaction', 'add')}</div>
       <div class="filters">
@@ -379,13 +388,14 @@ const records = {
       </div>
       ${groups.size ? [...groups.entries()].map(([day, list]) => `<h4 class="day">${esc(day)}</h4><div class="list">${list.map((t) => txRow(t)).join('')}</div>`).join('')
         : empty('No matching transactions')}
-      ${txs.length > 600 ? '<p class="muted center">Showing the latest 600 — refine the filters to see more.</p>' : ''}`;
+      ${txs.length > recordLimit ? `<div class="center"><button class="btn" data-action="more">Show more <small class="muted">· ${txs.length - recordLimit} older</small></button></div>` : ''}`;
   },
   actions: {
     add: () => openTxForm(null),
     editTx: (el) => openTxForm(store.get('transactions', el.dataset.id)),
+    more: () => { recordLimit += PAGE_SIZE * 2; store.emit(); },
   },
-  onFilter(name, value) { recordFilter[name] = value; },
+  onFilter(name, value) { recordFilter[name] = value; recordLimit = PAGE_SIZE; },
 };
 
 // ---------------------------------------------------------------- CATEGORIES
@@ -404,7 +414,7 @@ const categories = {
     const roots = cats.filter((c) => c.parent_category_id == null || !cats.some((p) => p.id === c.parent_category_id));
     const row = (c, sub) => `<div class="acc-row ${sub ? 'sub' : ''}"><span class="cat-ico" style="background:${argbToCss(c.color)}22;color:${argbToCss(c.color)}">${L.icon(c.icon_res_id)}</span>
       <div class="acc-main"><strong>${esc(c.name)}</strong><small>${store.all('transactions').filter((t) => t.category_id === c.id).length} transaction(s)</small></div>
-      <div class="row-actions"><button class="icon-btn" data-action="edit" data-id="${c.id}">✎</button><button class="icon-btn" data-action="del" data-id="${c.id}">🗑</button></div></div>`;
+      <div class="row-actions"><button class="icon-btn" data-action="edit" data-id="${c.id}">${svg('edit')}</button><button class="icon-btn" data-action="del" data-id="${c.id}">${svg('delete')}</button></div></div>`;
     return `<div class="page-head"><h1>Categories</h1>${plus('Category', 'add')}</div>
       <div class="tabs">${['Expense', 'Income'].map((t) => `<button class="tab ${t === catTab ? 'on' : ''}" data-action="tab" data-tab="${t}">${t}</button>`).join('')}</div>
       <div class="list">${roots.length ? roots.map((r) => row(r) + cats.filter((c) => c.parent_category_id === r.id).map((c) => row(c, true)).join('')).join('') : empty('No categories')}</div>`;
@@ -442,7 +452,7 @@ const budgets = {
     const total = list.reduce((s, x) => s + x.budget.amount_limit, 0), spent = list.reduce((s, x) => s + x.spent, 0);
     return `<div class="page-head"><div><h1>Budgets</h1><p class="muted">${money(spent)} spent of ${money(total)} budgeted</p></div>${plus('Budget', 'add')}</div>
       ${list.length ? `<div class="grid">${list.map((x) => `<div class="card"><h3>${L.icon(x.category.icon_res_id)} ${esc(x.category.name)}
-        <span class="row-actions"><button class="icon-btn" data-action="edit" data-id="${x.budget.id}">✎</button><button class="icon-btn" data-action="del" data-id="${x.budget.id}">🗑</button></span></h3>
+        <span class="row-actions"><button class="icon-btn" data-action="edit" data-id="${x.budget.id}">${svg('edit')}</button><button class="icon-btn" data-action="del" data-id="${x.budget.id}">${svg('delete')}</button></span></h3>
         ${progressBar(x.ratio)}<div class="kpis">${kpi('Spent', money(x.spent), x.ratio >= 1 ? 'neg' : '')}${kpi(x.remaining >= 0 ? 'Left' : 'Over by', money(Math.abs(x.remaining)), x.remaining >= 0 ? 'pos' : 'neg')}</div>
         <small class="muted">${esc(x.budget.period)} · ${fmtDate(x.budget.start_date)} – ${fmtDate(x.budget.end_date)} · ${Math.round(x.ratio * 100)}%</small></div>`).join('')}</div>`
         : empty('No budgets yet. Set a spending limit for a category.')}
@@ -556,20 +566,20 @@ const subscriptions = {
     const mInc = subs.filter((s) => s.t.type === 'Income').reduce((s, x) => s + L.convert(L.monthlyEquivalent(x.t.amount, x.t.recurrence_rule), x.cur, L.base()), 0);
     const pend = store.all('planned_payouts').filter((p) => p.status === 'PENDING').sort((a, b) => a.due_date - b.due_date);
     const paid = store.all('planned_payouts').filter((p) => p.status !== 'PENDING').sort((a, b) => (b.paid_date || 0) - (a.paid_date || 0)).slice(0, 10);
-    return `<div class="page-head"><h1>Subscriptions & bills</h1><div class="row">${plus('Recurring', 'addSub')}<button class="btn" data-action="addPayout">＋ Planned payout</button></div></div>
+    return `<div class="page-head"><h1>Subscriptions & bills</h1><div class="row">${plus('Recurring', 'addSub')}<button class="btn" data-action="addPayout">${svg('add')}Planned payout</button></div></div>
       <div class="kpis big">${kpi('Monthly bills', money(mExp), 'neg')}${kpi('Monthly recurring income', money(mInc), 'pos')}${kpi('Pending payouts', money(pend.reduce((s, p) => s + L.convert(p.amount, p.currency_code, L.base()), 0)))}</div>
       <h3>Recurring</h3><div class="list">${subs.length ? subs.map(({ t, next, cur }) => `<div class="acc-row">
         <span class="cat-ico">${L.icon(catOf(t.category_id)?.icon_res_id)}</span>
         <div class="acc-main"><strong>${esc(t.note || catOf(t.category_id)?.name || 'Recurring')}</strong><small>${esc(L.scheduleLabel(t.recurrence_rule, t.date))} · next ${fmtDate(next)} · ${esc(accName(t.account_id))}</small></div>
         <div class="acc-bal"><strong class="${t.type === 'Income' ? 'pos' : 'neg'}">${money(t.type === 'Income' ? t.amount : -t.amount, cur, { sign: true })}</strong><small class="muted">≈ ${money(L.monthlyEquivalent(t.amount, t.recurrence_rule), cur)}/mo</small></div>
-        <div class="row-actions"><button class="icon-btn" title="${t.type === 'Income' ? 'Mark received' : 'Mark paid'}" data-action="logSub" data-id="${t.id}">✔</button><button class="icon-btn" title="Skip to next cycle" data-action="skipSub" data-id="${t.id}">⏭</button><button class="icon-btn" title="Edit" data-action="editSub" data-id="${t.id}">✎</button>
-        <button class="icon-btn" title="Stop" data-action="stopSub" data-id="${t.id}">⏹</button><button class="icon-btn" title="Delete" data-action="delSub" data-id="${t.id}">🗑</button></div></div>`).join('') : empty('No recurring items')}</div>
+        <div class="row-actions"><button class="icon-btn" title="${t.type === 'Income' ? 'Mark received' : 'Mark paid'}" data-action="logSub" data-id="${t.id}">${svg('check')}</button><button class="icon-btn" title="Skip to next cycle" data-action="skipSub" data-id="${t.id}">${svg('skip')}</button><button class="icon-btn" title="Edit" data-action="editSub" data-id="${t.id}">${svg('edit')}</button>
+        <button class="icon-btn" title="Stop" data-action="stopSub" data-id="${t.id}">${svg('stop')}</button><button class="icon-btn" title="Delete" data-action="delSub" data-id="${t.id}">${svg('delete')}</button></div></div>`).join('') : empty('No recurring items')}</div>
       <h3>Planned payouts</h3><div class="list">${pend.length ? pend.map((p) => `<div class="acc-row">
-        <span class="cat-ico">${p.priority === 'HIGH' ? '🔴' : p.priority === 'LOW' ? '⚪' : '🟡'}</span>
+        <span class="cat-ico">${prio(p.priority)}</span>
         <div class="acc-main"><strong>${esc(p.title)}</strong><small>Due ${fmtDate(p.due_date)}${p.due_date < Date.now() ? ' · <b class="neg">overdue</b>' : ''}${p.payee_or_vendor ? ' · ' + esc(p.payee_or_vendor) : ''}</small></div>
         <div class="acc-bal"><strong>${money(p.amount, p.currency_code)}</strong></div>
-        <div class="row-actions"><button class="btn small" data-action="payPayout" data-id="${p.id}">Mark paid</button><button class="icon-btn" data-action="editPayout" data-id="${p.id}">✎</button><button class="icon-btn" data-action="delPayout" data-id="${p.id}">🗑</button></div></div>`).join('') : empty('No pending payouts')}</div>
-      ${paid.length ? `<h3>Recently paid</h3><div class="list">${paid.map((p) => `<div class="acc-row"><span class="cat-ico">✅</span><div class="acc-main"><strong>${esc(p.title)}</strong><small>${esc(p.status)} ${p.paid_date ? fmtDate(p.paid_date) : ''}</small></div>
+        <div class="row-actions"><button class="btn small" data-action="payPayout" data-id="${p.id}">Mark paid</button><button class="icon-btn" data-action="editPayout" data-id="${p.id}">${svg('edit')}</button><button class="icon-btn" data-action="delPayout" data-id="${p.id}">${svg('delete')}</button></div></div>`).join('') : empty('No pending payouts')}</div>
+      ${paid.length ? `<h3>Recently paid</h3><div class="list">${paid.map((p) => `<div class="acc-row"><span class="cat-ico pos">${svg('done')}</span><div class="acc-main"><strong>${esc(p.title)}</strong><small>${esc(p.status)} ${p.paid_date ? fmtDate(p.paid_date) : ''}</small></div>
         <div class="acc-bal"><strong>${money(p.amount, p.currency_code)}</strong></div><div class="row-actions">${p.status === 'PAID' ? `<button class="btn small ghost" data-action="unpay" data-id="${p.id}">Undo</button>` : ''}</div></div>`).join('')}</div>` : ''}`;
   },
   actions: {
@@ -612,12 +622,12 @@ const commissions = {
         const pm = ms.filter((m) => m.project_id === p.id).sort((a, b) => a.expected_date - b.expected_date);
         const got = pm.filter((m) => m.status === 'Paid').reduce((s, m) => s + m.amount, 0);
         return `<div class="card"><h3>${esc(p.project_name)} <small class="badge ${p.status === 'Active' ? '' : 'pos'}">${esc(p.status)}</small>
-          <span class="row-actions"><button class="icon-btn" data-action="editProject" data-id="${p.id}">✎</button><button class="icon-btn" data-action="delProject" data-id="${p.id}">🗑</button></span></h3>
+          <span class="row-actions"><button class="icon-btn" data-action="editProject" data-id="${p.id}">${svg('edit')}</button><button class="icon-btn" data-action="delProject" data-id="${p.id}">${svg('delete')}</button></span></h3>
           <p class="muted">${esc(p.client || 'No client')} · ${money(got)} received of ${money(p.total_expected_fee)}</p>${progressBar(p.total_expected_fee ? got / p.total_expected_fee : 0, 2, { good: true })}
-          <div class="list">${pm.map((m) => `<div class="mini-row"><span>${m.status === 'Paid' ? '✅' : '⏳'} ${esc(m.title)}<br><small class="muted">${m.status === 'Paid' ? 'Paid ' + fmtDate(m.paid_at) : 'Expected ' + fmtDate(m.expected_date)}</small></span>
+          <div class="list">${pm.map((m) => `<div class="mini-row"><span>${m.status === 'Paid' ? svg('done', 'pos') : svg('clock', 'muted')} ${esc(m.title)}<br><small class="muted">${m.status === 'Paid' ? 'Paid ' + fmtDate(m.paid_at) : 'Expected ' + fmtDate(m.expected_date)}</small></span>
             <span class="row"><strong>${money(m.amount)}</strong>${m.status === 'Pending' ? `<button class="btn small" data-action="payMilestone" data-id="${m.id}">Mark paid</button>` : ''}
-            <button class="icon-btn" data-action="editMilestone" data-id="${m.id}">✎</button><button class="icon-btn" data-action="delMilestone" data-id="${m.id}">🗑</button></span></div>`).join('')}</div>
-          <button class="btn small" data-action="addMilestone" data-id="${p.id}">＋ Milestone</button></div>`;
+            <button class="icon-btn" data-action="editMilestone" data-id="${m.id}">${svg('edit')}</button><button class="icon-btn" data-action="delMilestone" data-id="${m.id}">${svg('delete')}</button></span></div>`).join('')}</div>
+          <button class="btn small" data-action="addMilestone" data-id="${p.id}">${svg('add')}Milestone</button></div>`;
       }).join('') : empty('No freelance projects yet')}`;
   },
   actions: {
@@ -657,7 +667,7 @@ const assets = {
         <span class="dot" style="background:${argbToCss(a.color)}"></span>
         <div class="acc-main"><strong>${esc(a.name)}</strong><small>${esc(a.category)}${a.purchase_date ? ' · bought ' + fmtDate(a.purchase_date) : ''}${a.include_in_net_worth ? '' : ' · not in net worth'}</small></div>
         <div class="acc-bal"><strong>${money(a.estimated_value, a.currency_code)}</strong>${a.purchase_price ? `<small class="${g >= 0 ? 'pos' : 'neg'}">${money(g, a.currency_code, { sign: true })} (${((g / a.purchase_price) * 100).toFixed(1)}%)</small>` : ''}</div>
-        <div class="row-actions"><button class="icon-btn" data-action="edit" data-id="${a.id}">✎</button><button class="icon-btn" data-action="del" data-id="${a.id}">🗑</button></div></div>`; }).join('') : empty('No assets yet — log vehicles, gadgets, property, gold…')}</div>`;
+        <div class="row-actions"><button class="icon-btn" data-action="edit" data-id="${a.id}">${svg('edit')}</button><button class="icon-btn" data-action="del" data-id="${a.id}">${svg('delete')}</button></div></div>`; }).join('') : empty('No assets yet — log vehicles, gadgets, property, gold…')}</div>`;
   },
   actions: {
     add: () => formModal('New asset', assetFields, { currency_code: L.base(), include_in_net_worth: 1, category: 'Other', color: -16738120 }, { wide: true, onSubmit: (v) => { store.insert('assets', { ...v, purchase_price: v.purchase_price || 0, created_at: Date.now() }); toast('Asset added'); } }),
@@ -722,7 +732,7 @@ const cards = {
             : `<div class="pc-meta"><small class="muted">${esc(L.CARD_TYPES.find((t) => t[0] === c.card_type)?.[1] || c.card_type)} · ${c.linked_account_id ? 'linked to ' + esc(accName(c.linked_account_id)) : 'no linked account'}</small></div>`}
           <div class="row"><button class="btn small" data-action="reveal" data-id="${c.id}">${show ? 'Hide' : 'Reveal'}</button><button class="btn small" data-action="charge" data-id="${c.id}">Log charge</button>
           ${c.card_type === 'CREDIT' ? `<button class="btn small" data-action="payBill" data-id="${c.id}">Pay bill</button>` : ''}
-          <button class="btn small ghost" data-action="freeze" data-id="${c.id}">${c.is_frozen ? 'Unfreeze' : 'Freeze'}</button><button class="icon-btn" data-action="edit" data-id="${c.id}">✎</button><button class="icon-btn" data-action="del" data-id="${c.id}">🗑</button></div></div>`;
+          <button class="btn small ghost" data-action="freeze" data-id="${c.id}">${c.is_frozen ? 'Unfreeze' : 'Freeze'}</button><button class="icon-btn" data-action="edit" data-id="${c.id}">${svg('edit')}</button><button class="icon-btn" data-action="del" data-id="${c.id}">${svg('delete')}</button></div></div>`;
       }).join('') : empty('No cards saved')}</div>`;
   },
   actions: {
@@ -814,7 +824,7 @@ function healthTab() {
       ${pillar('Budget discipline', h.budget, 25, store.all('budgets').length ? 'Budgets kept within their limits' : 'No budgets set (default points)')}
       ${pillar('Emergency buffer', h.emergency, 25, `${h.runway.toFixed(1)} months of runway in liquid accounts`)}
       ${pillar('Debt burden', h.debt, 20, h.activeDebts ? `${h.debtRatio.toFixed(1)}% of net cash owed` : 'No active borrowed debt')}</div>
-    <div class="card span2"><h3>Smart financial recommendations</h3>${h.tips.length ? h.tips.map((t) => `<p class="tip">• ${esc(t)}</p>`).join('') : '<p class="pos">✓ Everything looks healthy — keep it up!</p>'}</div></div>`;
+    <div class="card span2"><h3>Smart financial recommendations</h3>${h.tips.length ? h.tips.map((t) => `<p class="tip">• ${esc(t)}</p>`).join('') : `<p class="pos">${svg('done')} Everything looks healthy — keep it up!</p>`}</div></div>`;
 }
 function overviewTab() {
   const n = new Date(); let from, to = Date.now();
@@ -857,11 +867,11 @@ const receipts = {
     const list = store.all('receipts_inbox').sort((a, b) => b.captured_at - a.captured_at);
     const pending = list.filter((r) => r.status === 'PENDING');
     return `<div class="page-head"><div><h1>Receipts inbox</h1><p class="muted">Snap receipts fast, review & classify at your own pace. Photos sync between the phone and the web.</p></div>
-      <label class="btn primary">📷 Add receipt photo<input type="file" accept="image/*" capture="environment" hidden data-action-change="addPhoto"></label></div>
-      <div class="list">${list.length ? list.map((r) => `<div class="acc-row">${isSha(r.image_sha256) ? `<button class="thumb" data-photo="${r.image_sha256}" data-title="${esc(r.note || 'Receipt')}"><img data-sha="${r.image_sha256}" alt="Receipt"></button>` : `<span class="cat-ico" title="${r.image_path ? 'Photo stored on the phone only' : 'No photo'}">${r.status === 'PENDING' ? '🧾' : r.status === 'CONVERTED' ? '✅' : '🗑'}</span>`}
+      <label class="btn primary">${svg('camera')}Add receipt photo<input type="file" accept="image/*" capture="environment" hidden data-action-change="addPhoto"></label></div>
+      <div class="list">${list.length ? list.map((r) => `<div class="acc-row">${isSha(r.image_sha256) ? `<button class="thumb" data-photo="${r.image_sha256}" data-title="${esc(r.note || 'Receipt')}"><img data-sha="${r.image_sha256}" alt="Receipt"></button>` : `<span class="cat-ico" title="${r.image_path ? 'Photo stored on the phone only' : 'No photo'}">${r.status === 'PENDING' ? svg('ic_bills') : r.status === 'CONVERTED' ? svg('done') : svg('delete')}</span>`}
         <div class="acc-main"><strong>${esc(r.note || 'Receipt')}</strong><small>${fmtDateTime(r.captured_at)} · ${esc(r.status)}${r.suggested_amount != null ? ' · ' + money(r.suggested_amount) : ''}</small></div>
         <div class="row-actions">${r.status === 'PENDING' ? `<button class="btn small" data-action="convert" data-id="${r.id}">Convert</button><button class="btn small ghost" data-action="discard" data-id="${r.id}">Discard</button>` : ''}
-        <button class="icon-btn" data-action="del" data-id="${r.id}">🗑</button></div></div>`).join('') : empty('No receipts. Snap them from the phone app.')}</div>
+        <button class="icon-btn" data-action="del" data-id="${r.id}">${svg('delete')}</button></div></div>`).join('') : empty('No receipts. Snap them from the phone app.')}</div>
       ${pending.length ? `<p class="muted center">${pending.length} waiting for review</p>` : ''}`;
   },
   actions: {
@@ -887,12 +897,17 @@ const receipts = {
 // ---------------------------------------------------------------- SETTINGS
 let devicesCache = null;
 let serverInfo = null; // { app, invite }
-function inviteCard() {
-  if (!serverInfo?.me?.admin) return '';
-  return `<div class="card"><h3>Invite people</h3>
-    <p class="muted">Anyone with the invite code can create their own account. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
-    ${serverInfo.invite?.inviteCode ? `<p>Invite code: <strong class="mono">${esc(serverInfo.invite.inviteCode)}</strong></p>` : '<p>Sign-up is closed.</p>'}
-    ${serverInfo.invite?.fromEnv ? '<p class="muted">The invite code is fixed in the server configuration.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>`;
+function signupCard() {
+  const inv = serverInfo?.invite;
+  if (!serverInfo?.me?.admin) {
+    return `<div class="card"><h3>${svg('people')}Sign-ups</h3><p class="muted">New accounts are invite-only. Ask the person who invited you, or contact ATEN Systems, for an invite code.</p></div>`;
+  }
+  const used = inv ? Math.min(1, inv.users / Math.max(1, inv.maxUsers)) : 0;
+  return `<div class="card signup"><h3>${svg('people')}Sign-ups <span class="badge ${inv?.inviteCode ? 'pos' : ''}">${inv?.inviteCode ? 'Open' : 'Closed'}</span></h3>
+    <p class="muted">Anyone with the invite code can create their own account on the website. Their data is separate from yours.</p>
+    ${inv ? `<div class="signup-meter"><div class="progress"><i style="width:${used * 100}%"></i></div><small class="muted">${inv.users} of ${inv.maxUsers} accounts used</small></div>` : ''}
+    ${inv?.inviteCode ? `<div class="invite-code"><span class="mono">${esc(inv.inviteCode)}</span><button class="icon-btn" data-action="copyInvite" title="Copy code" aria-label="Copy invite code">${svg('copy')}</button></div>` : ''}
+    ${inv?.fromEnv ? '<p class="muted">The invite code is fixed in the server configuration.</p>' : `<div class="row"><button class="btn ${inv?.inviteCode ? '' : 'primary'}" data-action="newInvite">${inv?.inviteCode ? 'New code' : 'Open sign-up'}</button>${inv?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>`;
 }
 const settings = {
   title: 'Settings',
@@ -900,40 +915,35 @@ const settings = {
     const s = store.status, a = store.auth;
     const rates = store.all('exchange_rates').sort((x, y) => x.from_currency.localeCompare(y.from_currency));
     if (!devicesCache) settings.loadDevices();
-    if (!serverInfo) settings.loadServerInfo();
     const theme = themePrefs();
     return `<div class="page-head"><h1>Settings</h1></div>
     <div class="grid">
-      <div class="card"><h3>Android app</h3>
-        ${serverInfo?.app ? `<p>Version ${esc(serverInfo.app.versionName || '—')} · ${(serverInfo.app.size / 1048576).toFixed(1)} MB. Install it, or install over your current app to update. Your data stays.</p>
-          <a class="btn primary" href="${esc(serverInfo.app.url)}" download>Download APK</a>` : '<p class="muted">The Android app download is not available yet.</p>'}</div>
-      ${inviteCard()}
       <div class="card"><h3>Sync</h3>
         <p>Signed in as <strong>${esc(a.username)}</strong></p>
-        <p class="muted">${s.syncing ? 'Syncing…' : s.error ? `⚠ ${esc(s.error)}` : `Last sync ${s.lastSync ? fmtDateTime(s.lastSync) : 'never'}`} · ${store.pending.size} pending change(s)</p>
+        <p class="muted">${s.syncing ? 'Syncing…' : s.error ? `${svg('warn')} ${esc(s.error)}` : `Last sync ${s.lastSync ? fmtDateTime(s.lastSync) : 'never'}`} · ${store.pending.size} pending change(s)</p>
         <div class="row"><button class="btn primary" data-action="syncNow">Sync now</button><button class="btn" data-action="resetCache">Refresh all data</button><button class="btn danger ghost" data-action="signOut">Sign out</button></div></div>
       <div class="card"><h3>Display</h3>
         <label class="field"><span>Base currency (synced to all devices)</span><select data-action-change="baseCurrency">${L.CURRENCIES.map((c) => `<option value="${c.code}" ${c.code === L.base() ? 'selected' : ''}>${c.code} — ${esc(c.name)}</option>`).join('')}</select></label>
         <label class="field"><span>Theme mode (synced with your phone)</span><select data-action-change="theme">${THEME_MODES.map(([v, l]) => `<option value="${v}" ${v === theme.mode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" data-action-change="includeAssets" ${viewPrefs.get('includeAssets', false) ? 'checked' : ''}> Include assets in hero total</label>
         <label class="check"><input type="checkbox" data-action-change="hideMoney" ${viewPrefs.get('hideMoney', false) ? 'checked' : ''}> Hide amounts (privacy mask)</label>
-        <a class="btn" href="#/customize">⚙ Customize dashboard cards</a></div>
+        <a class="btn" href="#/customize">${svg('tune')}Customize dashboard cards</a></div>
       <div class="card span2"><h3>Theme palette <small class="muted">· synced with your phone</small></h3>${theme.preset === 'MATERIAL_YOU' ? '<p class="muted">Your phone uses Material You (wallpaper colours); the web shows Emerald Aurora for it.</p>' : ''}<div class="swatches">${PALETTES.map(([k, l, d]) => `<button class="swatch ${theme.preset === k ? 'on' : ''}" data-action="palette" data-k="${k}" data-hero="${PALETTES.find((p) => p[0] === k)[3]}"><i class="pal-${k}"></i><strong>${esc(l)}</strong><small>${esc(d)}</small></button>`).join('')}</div>
         <h3>Hero card atmosphere</h3><div class="swatches">${HERO_STYLES.map(([k, l]) => `<button class="swatch ${theme.hero === k ? 'on' : ''}" data-action="hero" data-k="${k}"><i class="hero-sw-${k}"></i><strong>${esc(l)}</strong></button>`).join('')}</div>
         </div>
       <div class="card"><h3>App lock (this browser)</h3>
-        ${lock.enabled ? `<p class="muted">🔒 Locked with a 4-digit PIN. Wrong PINs trigger cooldowns; 10 in a row signs this browser out.</p>
+        ${lock.enabled ? `<p class="muted">${svg('lock')} Locked with a 4-digit PIN. Wrong PINs trigger cooldowns; 10 in a row signs this browser out.</p>
           <label class="field"><span>Lock again</span><select data-action-change="lockTimeout">${TIMEOUT_OPTIONS.map(([v, l]) => `<option value="${v}" ${v === lock.timeoutMode ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><small>Also locks after 10 minutes without activity.</small></label>
           <label class="check"><input type="checkbox" data-action-change="lockCards" ${lock.requireForCards ? 'checked' : ''}> Require PIN to reveal card numbers & CVV</label>
           <div class="row"><button class="btn" data-action="lockNow">Lock now</button><button class="btn" data-action="changePin">Change PIN</button><button class="btn danger ghost" data-action="disableLock">Turn off</button></div>`
         : `<p class="muted">Protect this browser with a 4-digit PIN, like the phone app's security lock. Recommended — card numbers and CVVs are visible here.</p>
           <button class="btn primary" data-action="enableLock">Set up PIN lock</button>`}</div>
-      <div class="card span2"><h3>Exchange rates <span class="row-actions"><button class="btn small" data-action="addRate">＋ Rate</button></span></h3>
+      <div class="card span2"><h3>Exchange rates <span class="row-actions"><button class="btn small" data-action="addRate">${svg('add')}Rate</button></span></h3>
         <div class="mini-row"><span>Live market rates · ${L.liveRates.fetchedAt ? `1 ${L.base() === 'USD' ? 'EUR' : 'USD'} = <strong>${money(L.convert(1, L.base() === 'USD' ? 'EUR' : 'USD', L.base()), L.base(), { hideable: false })}</strong> <small class="muted">updated ${fmtDateTime(L.liveRates.updatedAt || L.liveRates.fetchedAt)}</small>` : '<span class="muted">not downloaded yet</span>'}<br><small class="muted">Rates by <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Exchange Rate API</a></small></span>
           <span class="row-actions"><button class="btn small" data-action="refreshRates">Refresh</button></span></div>
         <p class="muted">Custom rates below take priority over live rates.</p>
         <div class="list">${rates.length ? rates.map((r) => `<div class="mini-row"><span>1 ${esc(r.from_currency)} = <strong>${r.rate}</strong> ${esc(r.to_currency)} <small class="muted">updated ${fmtDate(r.last_updated)}</small></span>
-          <span class="row-actions"><button class="icon-btn" data-action="editRate" data-id="${r.id}">✎</button><button class="icon-btn" data-action="delRate" data-id="${r.id}">🗑</button></span></div>`).join('') : empty('No custom rates')}</div></div>
+          <span class="row-actions"><button class="icon-btn" data-action="editRate" data-id="${r.id}">${svg('edit')}</button><button class="icon-btn" data-action="delRate" data-id="${r.id}">${svg('delete')}</button></span></div>`).join('') : empty('No custom rates')}</div></div>
       <div class="card"><h3>Devices</h3><div class="list">${devicesCache ? devicesCache.devices.map((d) => `<div class="mini-row"><span>${esc(d.name || 'Device')} #${d.device_no}${d.device_no === devicesCache.current ? ' <small class="badge">this one</small>' : ''}<br>
         <small class="muted">${d.revoked ? 'Signed out' : 'Last seen ' + fmtDateTime(d.last_seen)}</small></span>${!d.revoked && d.device_no !== devicesCache.current ? `<button class="btn small ghost danger" data-action="revoke" data-id="${d.device_no}">Sign out</button>` : ''}</div>`).join('') : '<p class="muted">Loading…</p>'}</div></div>
       <div class="card"><h3>Security & data</h3>
@@ -943,7 +953,7 @@ const settings = {
     </div>`;
   },
   async loadServerInfo() {
-    const { api } = await import('./store.js?v=16');
+    const { api } = await import('./store.js?v=17');
     const tok = store.auth.token;
     try {
       const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
@@ -953,7 +963,7 @@ const settings = {
     store.emit();
   },
   async loadDevices() {
-    try { const { api } = await import('./store.js?v=16'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
+    try { const { api } = await import('./store.js?v=17'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
     palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
@@ -974,10 +984,10 @@ const settings = {
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     refreshRates: async () => { toast((await L.refreshLiveRates(true)) ? 'Live rates updated' : 'Could not refresh rates'); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will use live market rates.')) store.remove('exchange_rates', el.dataset.id); },
-    newInvite: async () => { const { api } = await import('./store.js?v=16'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
-    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=16'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
-    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=16'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
-    changePassword: async () => { const { api } = await import('./store.js?v=16'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
+    newInvite: async () => { const { api } = await import('./store.js?v=17'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=17'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
+    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=17'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
+    changePassword: async () => { const { api } = await import('./store.js?v=17'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
     exportJson: async () => {
       toast('Preparing backup…');
       const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));
@@ -1034,21 +1044,29 @@ function download(name, text, type) {
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; store.emit(); });
 const about = {
-  title: 'About & support',
+  title: 'About',
   render() {
-    return `<div class="page-head"><h1>About My Finance</h1></div>
+    if (!serverInfo) settings.loadServerInfo();
+    const app = serverInfo?.app;
+    return `<div class="page-head"><h1>About</h1></div>
     <div class="grid">
-      <div class="card span2 about-hero"><span class="logo">₱</span><div><h2>My Finance</h2><p class="muted">Personal finance manager for Android and the web. Accounts, budgets, bills, cards and debts in one place.</p>
-        <p>Created by <strong>Rohan Reyes</strong></p></div></div>
-      <div class="card"><h3>Support the developer</h3><p class="muted">Help fund ongoing development and updates.</p>
-        <a class="btn primary" href="https://buymeacoffee.com/rohan_reyes" target="_blank" rel="noopener noreferrer">Buy Me a Coffee ↗</a></div>
-      <div class="card"><h3>Privacy</h3><p class="muted">No ads and no trackers. Your data is stored on your phone and, with sync on, in your My Finance account. This browser keeps an offline copy that is removed when you sign out.</p></div>
-      <div class="card"><h3>ATEN Systems</h3><p class="muted">My Finance is built by ATEN Systems.</p><a class="btn" href="https://aten-systems.site" target="_blank" rel="noopener noreferrer">aten-systems.site ↗</a></div>
-      <div class="card"><h3>This web app</h3><div class="mini-row"><span>Signed in as</span><strong>${esc(store.auth.username)}</strong></div>
-        <div class="mini-row"><span>Records synced</span><strong>${Object.keys(store.tables).reduce((n, t) => n + store.tables[t].size, 0)}</strong></div></div>
+      <div class="card span2 about-hero"><span class="logo"></span><div><h2>My Finance</h2><p class="muted">Personal finance for your phone and the web. Accounts, budgets, bills, cards and debts in one place. Local-first, with optional sync.</p>
+        <p class="about-meta"><span>By <strong>Rohan Reyes</strong> · ATEN Systems</span>${app?.versionName ? `<span class="badge">Android ${esc(app.versionName)}</span>` : ''}</p></div></div>
+      ${signupCard()}
+      <div class="card"><h3>This account</h3><div class="mini-row"><span>Signed in as</span><strong>${esc(store.auth.username)}</strong></div>
+        <div class="mini-row"><span>Records synced</span><strong>${Object.keys(store.tables).reduce((n, t) => n + store.tables[t].size, 0)}</strong></div>
+        <div class="mini-row"><span>Exchange rates</span><small class="muted">by <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Exchange Rate API</a></small></div></div>
+      <div class="card"><h3>Privacy</h3><p class="muted">No ads and no trackers. Your data lives on your phone and, with sync on, in your My Finance account. This browser keeps an offline copy that is removed when you sign out.</p></div>
+      <div class="card"><h3>Support</h3><p class="muted">Questions, feedback or a bug? ATEN Systems builds and maintains My Finance.</p>
+        <div class="row"><a class="btn" href="https://aten-systems.site" target="_blank" rel="noopener noreferrer">aten-systems.site ${svg('open')}</a>
+        <a class="btn primary" href="https://buymeacoffee.com/rohan_reyes" target="_blank" rel="noopener noreferrer">Buy me a coffee ${svg('open')}</a></div></div>
     </div>`;
   },
-  actions: {},
+  actions: {
+    newInvite: () => settings.actions.newInvite(),
+    closeInvite: () => settings.actions.closeInvite(),
+    copyInvite: async () => { try { await navigator.clipboard.writeText(serverInfo?.invite?.inviteCode || ''); toast('Invite code copied'); } catch { toast('Copy failed', 'err'); } },
+  },
 };
 const getApp = {
   title: 'Get the app',
@@ -1074,8 +1092,14 @@ const getApp = {
 export const PAGES = { dashboard, customize, about, 'get-app': getApp, accounts, account: accountDetail, records, categories, budgets, debts, subscriptions, commissions, assets, cards, analytics, receipts, settings };
 const NAV_PATHS = {"dashboard": `<path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/>`, "accounts": `<path d="M4 10h3v7H4zm6.5 0h3v7h-3zM2 19h20v3H2zm15-9h3v7h-3zM12 1 2 6v2h20V6z"/>`, "records": `<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>`, "budgets": `<path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99z"/>`, "subscriptions": `<path d="M12 4V1L8 5l4 4V6a6 6 0 0 1 5.65 8.03l1.46 1.46A8 8 0 0 0 12 4zm-5.65 5.97L4.89 8.51A8 8 0 0 0 12 20v3l4-4-4-4v3a6 6 0 0 1-5.65-8.03z"/>`, "debts": `<path d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>`, "commissions": `<path d="M10 16v-1H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4h-7v1zm10-9h-4V5l-2-2h-4L8 5v2H4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h6v-2h4v2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zm-6 0h-4V5h4z"/>`, "assets": `<path d="M20 2H4a2 2 0 0 0-2 2v3.01c0 .72.43 1.34 1 1.69V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.7c.57-.35 1-.97 1-1.69V4a2 2 0 0 0-2-2zm-5 12H9v-2h6zm5-7H4V4h16z"/>`, "cards": `<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H4v-6h16zm0-10H4V6h16z"/>`, "analytics": `<path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>`, "receipts": `<path d="M18 17H6v-2h12zm0-4H6v-2h12zm0-4H6V7h12zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2z"/>`, "categories": `<path d="M12 2l-5.5 9h11zm5.5 11a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM3 21.5h8v-8H3z"/>`, "settings": `<path d="M19.14 12.94a7.4 7.4 0 0 0 0-1.88l2.03-1.58a.48.48 0 0 0 .12-.61l-1.92-3.32a.48.48 0 0 0-.59-.21l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.21L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a7.4 7.4 0 0 0 0 1.88l-2.03 1.58a.48.48 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.21l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7.4 7.4 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.21l1.92-3.32a.48.48 0 0 0-.12-.61zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>`, "get-app": `<path d="M19 9h-4V3H9v6H5l7 7zM5 18v2h14v-2z"/>`, "about": `<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/>`};
 const NAV_ICON = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${NAV_PATHS[k]}</svg>`;
-export const NAV = [
-  ['dashboard', NAV_ICON('dashboard'), 'Dashboard'], ['accounts', NAV_ICON('accounts'), 'Accounts'], ['records', NAV_ICON('records'), 'Records'], ['budgets', NAV_ICON('budgets'), 'Budgets'],
-  ['subscriptions', NAV_ICON('subscriptions'), 'Subscriptions'], ['debts', NAV_ICON('debts'), 'Debts'], ['commissions', NAV_ICON('commissions'), 'Commissions'], ['assets', NAV_ICON('assets'), 'Assets'],
-  ['cards', NAV_ICON('cards'), 'Cards'], ['analytics', NAV_ICON('analytics'), 'Analytics'], ['receipts', NAV_ICON('receipts'), 'Receipts'], ['categories', NAV_ICON('categories'), 'Categories'], ['settings', NAV_ICON('settings'), 'Settings'], ['get-app', NAV_ICON('get-app'), 'Get the app'], ['about', NAV_ICON('about'), 'About & support'],
-];
+const LABELS = { dashboard: 'Dashboard', analytics: 'Analytics', accounts: 'Accounts', records: 'Records', cards: 'Cards', receipts: 'Receipts',
+  budgets: 'Budgets', subscriptions: 'Bills & subs', debts: 'Debts', commissions: 'Projects', assets: 'Assets', categories: 'Categories',
+  settings: 'Settings', 'get-app': 'Get the app', about: 'About' };
+/** Sidebar sections. */
+export const NAV_GROUPS = [
+  ['Overview', ['dashboard', 'analytics']],
+  ['Money', ['accounts', 'records', 'cards', 'receipts']],
+  ['Planning', ['budgets', 'subscriptions', 'debts', 'commissions', 'assets', 'categories']],
+  ['App', ['settings', 'get-app', 'about']],
+].map(([title, keys]) => [title, keys.map((k) => [k, NAV_ICON(k), LABELS[k]])]);
+export const NAV = NAV_GROUPS.flatMap(([, items]) => items);
