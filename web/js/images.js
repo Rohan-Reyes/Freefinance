@@ -1,6 +1,6 @@
 // Photos for receipts / transaction proofs, stored content-addressed (SHA-256) on the sync server.
 // <img> can't send an Authorization header, so photos are fetched with the token and shown as blob: URLs.
-import { store } from './store.js?v=13';
+import { store } from './store.js?v=14';
 
 const cache = new Map(); // sha -> Promise<blobURL|null>
 export const isSha = (s) => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s);

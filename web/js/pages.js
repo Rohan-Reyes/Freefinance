@@ -1,14 +1,14 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
-import { store } from './store.js?v=13';
-import * as L from './logic.js?v=13';
-import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=13';
-import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=13';
-import { BANKS, bankFor } from './banks.js?v=13';
-import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=13';
+import { store } from './store.js?v=14';
+import * as L from './logic.js?v=14';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=14';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=14';
+import { BANKS, bankFor } from './banks.js?v=14';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=14';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
-} from './ui.js?v=13';
+} from './ui.js?v=14';
 
 // ---------------------------------------------------------------- shared helpers
 const sortByName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
@@ -890,9 +890,9 @@ let serverInfo = null; // { app, invite }
 function inviteCard() {
   if (!serverInfo?.me?.admin) return '';
   return `<div class="card"><h3>Invite people</h3>
-    <p class="muted">Anyone with the invite code can create their own account on this server. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
+    <p class="muted">Anyone with the invite code can create their own account. Their data is separate from yours. ${serverInfo.invite ? `${serverInfo.invite.users} of ${serverInfo.invite.maxUsers} accounts used.` : ''}</p>
     ${serverInfo.invite?.inviteCode ? `<p>Invite code: <strong class="mono">${esc(serverInfo.invite.inviteCode)}</strong></p>` : '<p>Sign-up is closed.</p>'}
-    ${serverInfo.invite?.fromEnv ? '<p class="muted">Set by FF_INVITE_CODE on the server.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>`;
+    ${serverInfo.invite?.fromEnv ? '<p class="muted">The invite code is fixed in the server configuration.</p>' : `<div class="row"><button class="btn" data-action="newInvite">${serverInfo.invite?.inviteCode ? 'New code' : 'Open sign-up'}</button>${serverInfo.invite?.inviteCode ? '<button class="btn danger ghost" data-action="closeInvite">Close sign-up</button>' : ''}</div>`}</div>`;
 }
 const settings = {
   title: 'Settings',
@@ -906,12 +906,12 @@ const settings = {
     <div class="grid">
       <div class="card"><h3>Android app</h3>
         ${serverInfo?.app ? `<p>Version ${esc(serverInfo.app.versionName || '—')} · ${(serverInfo.app.size / 1048576).toFixed(1)} MB. Install it, or install over your current app to update. Your data stays.</p>
-          <a class="btn primary" href="${esc(serverInfo.app.url)}" download>Download APK</a>` : '<p class="muted">No APK has been uploaded to this server yet.</p>'}</div>
+          <a class="btn primary" href="${esc(serverInfo.app.url)}" download>Download APK</a>` : '<p class="muted">The Android app download is not available yet.</p>'}</div>
       ${inviteCard()}
       <div class="card"><h3>Sync</h3>
-        <p>Signed in as <strong>${esc(a.username)}</strong> · this browser is device #${a.deviceNo}</p>
+        <p>Signed in as <strong>${esc(a.username)}</strong></p>
         <p class="muted">${s.syncing ? 'Syncing…' : s.error ? `⚠ ${esc(s.error)}` : `Last sync ${s.lastSync ? fmtDateTime(s.lastSync) : 'never'}`} · ${store.pending.size} pending change(s)</p>
-        <div class="row"><button class="btn primary" data-action="syncNow">Sync now</button><button class="btn" data-action="resetCache">Re-download everything</button><button class="btn danger ghost" data-action="signOut">Sign out</button></div></div>
+        <div class="row"><button class="btn primary" data-action="syncNow">Sync now</button><button class="btn" data-action="resetCache">Refresh all data</button><button class="btn danger ghost" data-action="signOut">Sign out</button></div></div>
       <div class="card"><h3>Display</h3>
         <label class="field"><span>Base currency (synced to all devices)</span><select data-action-change="baseCurrency">${L.CURRENCIES.map((c) => `<option value="${c.code}" ${c.code === L.base() ? 'selected' : ''}>${c.code} — ${esc(c.name)}</option>`).join('')}</select></label>
         <label class="field"><span>Theme mode (synced with your phone)</span><select data-action-change="theme">${THEME_MODES.map(([v, l]) => `<option value="${v}" ${v === theme.mode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -941,7 +941,7 @@ const settings = {
     </div>`;
   },
   async loadServerInfo() {
-    const { api } = await import('./store.js?v=13');
+    const { api } = await import('./store.js?v=14');
     const tok = store.auth.token;
     try {
       const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
@@ -951,7 +951,7 @@ const settings = {
     store.emit();
   },
   async loadDevices() {
-    try { const { api } = await import('./store.js?v=13'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
+    try { const { api } = await import('./store.js?v=14'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
     palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
@@ -961,7 +961,7 @@ const settings = {
     disableLock: async () => { if (!(await askPin({ title: 'Turn off app lock', sub: 'Enter your PIN to confirm' }))) return; lock.disable(); toast('App lock turned off'); store.emit(); },
     lockNow: () => lock.lockNow(),
     syncNow: async () => { try { await store.sync(); toast('Synced'); } catch (e) { toast(e.message, 'err'); } },
-    resetCache: async () => { if (await confirmDialog('Re-download everything?', 'Clears this browser\'s copy and downloads all data from the server again. Unsynced changes in this browser are lost.', 'Re-download', 'primary')) { await store.resetLocalCache(); toast('Re-downloaded'); } },
+    resetCache: async () => { if (await confirmDialog('Refresh all data?', 'Clears this browser\'s copy and downloads all data from the server again. Unsynced changes in this browser are lost.', 'Re-download', 'primary')) { await store.resetLocalCache(); toast('Re-downloaded'); } },
     signOut: async () => { if (await confirmDialog('Sign out?', 'This browser\'s local copy will be removed.', 'Sign out', 'primary')) store.signOut(); },
     addRate: () => formModal('Exchange rate', [{ key: 'from_currency', label: 'From', type: 'select', options: curOpts(), half: true }, { key: 'to_currency', label: 'To', type: 'select', options: curOpts(), half: true }, { key: 'rate', label: 'Rate', type: 'number', required: true }], { from_currency: 'USD', to_currency: L.base() }, { onSubmit: (v) => {
       if (v.from_currency === v.to_currency) throw new Error('Pick two different currencies');
@@ -971,10 +971,10 @@ const settings = {
       toast('Rate saved'); } }),
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will fall back to reference rates.')) store.remove('exchange_rates', el.dataset.id); },
-    newInvite: async () => { const { api } = await import('./store.js?v=13'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
-    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=13'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
-    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=13'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
-    changePassword: async () => { const { api } = await import('./store.js?v=13'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
+    newInvite: async () => { const { api } = await import('./store.js?v=14'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=14'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
+    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=14'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
+    changePassword: async () => { const { api } = await import('./store.js?v=14'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast('Password changed'); } }); },
     exportJson: async () => {
       toast('Preparing backup…');
       const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));
@@ -1028,7 +1028,6 @@ function download(name, text, type) {
 }
 
 // ---------------------------------------------------------------- ABOUT & SUPPORT / GET THE APP (Android-only screens' web equivalents)
-const REPO = 'https://github.com/Rohan-Reyes/Freefinance';
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; store.emit(); });
 const about = {
@@ -1036,13 +1035,13 @@ const about = {
   render() {
     return `<div class="page-head"><h1>About My Finance</h1></div>
     <div class="grid">
-      <div class="card span2 about-hero"><span class="logo">₱</span><div><h2>My Finance</h2><p class="muted">Offline-first personal wealth, multi-currency ledger & financial dashboard — now with self-hosted sync between Android and the web.</p>
+      <div class="card span2 about-hero"><span class="logo">₱</span><div><h2>My Finance</h2><p class="muted">Personal finance manager for Android and the web. Accounts, budgets, bills, cards and debts in one place.</p>
         <p>Created by <strong>Rohan Reyes</strong></p></div></div>
-      <div class="card"><h3>☕ Support the developer</h3><p class="muted">Support ongoing offline-first development & updates.</p>
+      <div class="card"><h3>Support the developer</h3><p class="muted">Help fund ongoing development and updates.</p>
         <a class="btn primary" href="https://buymeacoffee.com/rohan_reyes" target="_blank" rel="noopener noreferrer">Buy Me a Coffee ↗</a></div>
-      <div class="card"><h3>Privacy</h3><p class="muted">No ads, no trackers, no analytics. Your data lives on your own sync server; this browser keeps an offline copy that is removed when you sign out.</p></div>
-      <div class="card"><h3>Source code</h3><p class="muted">MIT licensed.</p><a class="btn" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub repository ↗</a></div>
-      <div class="card"><h3>This web app</h3><div class="mini-row"><span>Signed in as</span><strong>${esc(store.auth.username)}</strong></div><div class="mini-row"><span>Device</span><strong>#${store.auth.deviceNo}</strong></div>
+      <div class="card"><h3>Privacy</h3><p class="muted">No ads and no trackers. Your data is stored on your phone and, with sync on, in your My Finance account. This browser keeps an offline copy that is removed when you sign out.</p></div>
+      <div class="card"><h3>ATEN Systems</h3><p class="muted">My Finance is built by ATEN Systems.</p><a class="btn" href="https://aten-systems.site" target="_blank" rel="noopener noreferrer">aten-systems.site ↗</a></div>
+      <div class="card"><h3>This web app</h3><div class="mini-row"><span>Signed in as</span><strong>${esc(store.auth.username)}</strong></div>
         <div class="mini-row"><span>Records synced</span><strong>${Object.keys(store.tables).reduce((n, t) => n + store.tables[t].size, 0)}</strong></div></div>
     </div>`;
   },
@@ -1058,11 +1057,11 @@ const getApp = {
       <div class="card"><h3>Android app</h3>
         ${app ? `<p>Version ${esc(app.versionName || '—')} · ${(app.size / 1048576).toFixed(1)} MB · Android ${esc(app.minAndroid || '7.0')}+</p>
           <p class="muted">Download it on your phone and open the file. To update, download again and install over the current app; your data stays.</p>
-          <div class="row"><a class="btn primary" href="${esc(app.url)}" download>Download APK</a></div>` : '<p class="muted">No APK has been uploaded to this server yet.</p>'}
+          <div class="row"><a class="btn primary" href="${esc(app.url)}" download>Download APK</a></div>` : '<p class="muted">The Android app download is not available yet.</p>'}
         <p class="muted">Then open <strong>Settings → Data &amp; sync → Server sync</strong> in the app and sign in with this account.</p></div>
       <div class="card"><h3>Install this web app</h3><p class="muted">Add My Finance to your home screen or desktop. It opens in its own window and works offline.</p>
         ${installPrompt ? '<button class="btn primary" data-action="install">Install app</button>' : '<p class="muted">In your browser menu choose <strong>Install app</strong> or <strong>Add to Home Screen</strong>.</p>'}</div>
-      <div class="card span2"><h3>Backups</h3><p class="muted">Your data is kept on your sync server. You can also export a full JSON backup (with photos and settings) or a CSV any time.</p>
+      <div class="card span2"><h3>Backups</h3><p class="muted">Your data is kept in your My Finance account. You can also export a full JSON backup (with photos and settings) or a CSV any time.</p>
         <a class="btn" href="#/settings">Open export &amp; import</a></div>
     </div>`;
   },

@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
 // Personal finance manager on Android and the web; local-first with optional sync.
-import { api } from './store.js?v=13';
-import { esc } from './ui.js?v=13';
+import { api } from './store.js?v=14';
+import { esc } from './ui.js?v=14';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
@@ -175,16 +175,17 @@ export async function renderLanding(app, { onSignedIn, browserName }) {
       </div>
     </section>
 
-    <section class="lp-account" id="lp-signin">
+    <dialog class="lp-modal" id="lp-signin" aria-labelledby="lpAuthTitle">
       <form class="lp-form" novalidate>
+        <button type="button" class="lp-close" aria-label="Close">×</button>
         <div class="tabs" role="tablist"></div>
-        <h2 class="form-title"></h2>
+        <h2 class="form-title" id="lpAuthTitle"></h2>
         <p class="form-sub"></p>
         <div class="fields"></div>
         <p class="form-error" hidden></p>
         <button class="lp-btn primary block" type="submit"></button>
       </form>
-    </section>
+    </dialog>
 
     <section class="lp-contact reveal" id="lp-contact">
       <div>
@@ -292,11 +293,11 @@ function wireForm(app, status, { onSignedIn, browserName }) {
       ? modes.map((m) => `<button type="button" class="tab ${m === mode ? 'on' : ''}" data-mode="${m}">${m === 'signin' ? 'Sign in' : 'Sign up'}</button>`).join('') : '';
     const closed = mode === 'signup' && !status.signupOpen;
     const t = {
-      setup: ['Set up your server', 'Enter your one-time setup code to create the admin account.', 'Create account'],
-      signin: ['Sign in to the web app', 'Use the same account as Server sync in the Android app.', 'Sign in'],
+      setup: ['Set up My Finance', 'Enter your one-time setup code to create the first account.', 'Create account'],
+      signin: ['Welcome back', 'Sign in to your My Finance account.', 'Sign in'],
       signup: closed
-        ? ['Sign up is invite-only', 'New accounts require an invite code from the server owner. Sign-up is currently closed on this server.', 'Back to sign in']
-        : ['Create an account', 'Accounts are invite-only. Enter the invite code you were given.', 'Create account'],
+        ? ['Sign-up is invite-only', 'Contact ATEN Systems to request an invite code.', 'Back to sign in']
+        : ['Create your account', 'Enter the invite code you were given.', 'Create account'],
     }[mode];
     form.querySelector('.form-title').textContent = t[0];
     form.querySelector('.form-sub').textContent = t[1];
@@ -312,15 +313,21 @@ function wireForm(app, status, { onSignedIn, browserName }) {
     err.hidden = true;
   };
   draw();
-  app.querySelectorAll('[data-auth-mode]').forEach((a) => a.addEventListener('click', (e) => {
-    const targetMode = a.dataset.authMode;
-    if (modes.includes(targetMode)) {
-      e.preventDefault();
-      mode = targetMode;
-      draw();
-      document.getElementById('lp-signin')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+  // Open the dialog from any "Sign in" / "Sign up" / "Open the web app" link.
+  const dialog = app.querySelector('#lp-signin');
+  const open = (wanted) => {
+    if (wanted && modes.includes(wanted)) mode = wanted;
+    draw();
+    if (!dialog.open) dialog.showModal();
+    form.querySelector('input')?.focus();
+  };
+  app.querySelectorAll('a[href="#lp-signin"], a[href="#lp-signup"]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    open(a.dataset.authMode || (a.getAttribute('href') === '#lp-signup' ? 'signup' : 'signin'));
   }));
+  form.querySelector('.lp-close').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // click on the backdrop
+  if (status.needsSetup || ['#lp-signin', '#lp-signup', '#/signup'].includes(location.hash)) open();
   form.addEventListener('click', (e) => { const b = e.target.closest('[data-mode]'); if (b) { mode = b.dataset.mode; draw(); } });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -338,6 +345,7 @@ function wireForm(app, status, { onSignedIn, browserName }) {
         ...(prev && prev.username === uname ? { deviceNo: prev.deviceNo } : {}),
         ...(mode === 'setup' ? { setupCode: f.setupCode } : {}), ...(mode === 'signup' ? { inviteCode: f.inviteCode } : {}) };
       const res = await api({ setup: '/api/setup', signin: '/api/login', signup: '/api/signup' }[mode], { method: 'POST', body });
+      dialog.close();
       document.documentElement.classList.remove('lp-active');
       history.replaceState(null, '', '#/dashboard'); // landing anchors are not app routes
       await onSignedIn(res);
