@@ -1,7 +1,7 @@
 // Public landing page (signed-out visitors), styled after aten-systems.site.
 // Personal finance manager on Android and the web; local-first with optional sync.
-import { api } from './store.js?v=14';
-import { esc } from './ui.js?v=14';
+import { api } from './store.js?v=15';
+import { esc } from './ui.js?v=15';
 
 const MAIN_SITE = 'https://aten-systems.site';
 const CONTACT = {
@@ -41,9 +41,9 @@ const FEATURES = [
 
 // Demo data for the phone mock-up (illustrative only).
 const DEMO = {
-  accounts: { label: 'Accounts', total: 45959.17, rows: [['G', '#0057E7', '#fff', 'GCash', 'E-wallet', 2140], ['M', '#F26A0A', '#fff', 'MariBank', 'Savings', 41173], ['m', '#0E1A13', '#00D26A', 'Maya', 'E-wallet', 500], ['₱', '#1A4D9C', '#fff', 'Cash', 'Wallet', 2146.17]] },
-  budgets: { label: 'Budgets', total: 6889, rows: null },
-  bills: { label: 'Bills', total: 2248, rows: [['N', '#E50914', '#fff', 'Netflix', 'Due in 3 days', -549], ['P', '#F5A020', '#07111F', 'PLDT Fibr', 'Due Nov 20', -1699], ['A', '#34D399', '#07111F', 'Allowance', 'Tomorrow', 150]] },
+  accounts: { label: 'Accounts', total: 116394, rows: [['G', '#0057E7', '#fff', 'GCash', 'E-wallet', 4698], ['M', '#F26A0A', '#fff', 'MariBank', 'Savings', 108500], ['m', '#0E1A13', '#00D26A', 'Maya', 'E-wallet', 1452], ['₱', '#1A4D9C', '#fff', 'Cash', 'Wallet', 1744]] },
+  budgets: { label: 'Budgets', total: 5820, rows: null },
+  bills: { label: 'Bills', total: 2248, rows: [['N', '#E50914', '#fff', 'Netflix', 'Due in 3 days', -549], ['P', '#F5A020', '#07111F', 'PLDT Fibr', 'Due Nov 20', -1699], ['S', '#34D399', '#07111F', 'Salary', 'In 2 days', 22500]] },
 };
 
 function phoneScreen(key) {
@@ -64,11 +64,11 @@ const browserMock = () => `<div class="lp-browser">
   <div class="lp-bbody">
     <aside><b>My Finance</b>${['Dashboard', 'Accounts', 'Records', 'Budgets', 'Bills', 'Cards', 'Analytics'].map((n, i) => `<span class="${i ? '' : 'on'}">${n}</span>`).join('')}</aside>
     <div class="lp-bmain">
-      <div class="lp-kpis"><div><small>Net worth</small><b>₱45,959</b></div><div><small>Spent this month</small><b class="neg">₱13,111</b></div><div><small>Budget left</small><b class="pos">₱6,889</b></div></div>
+      <div class="lp-kpis"><div><small>Net worth</small><b>₱116,394</b></div><div><small>Spent this month</small><b class="neg">₱24,180</b></div><div><small>Budget left</small><b class="pos">₱5,820</b></div></div>
       <div class="lp-chart"><small>Monthly spending</small>
         <svg viewBox="0 0 300 90" preserveAspectRatio="none"><path class="area" d="M0,70 C40,60 60,72 90,55 S150,30 180,40 S250,15 300,22 L300,90 L0,90Z"/><path class="line" d="M0,70 C40,60 60,72 90,55 S150,30 180,40 S250,15 300,22"/></svg>
       </div>
-      <div class="lp-blist">${[['Food & Dining', 81], ['Electronics', 11], ['Subscriptions', 4]].map(([n, v]) => `<div><span>${n}</span><i><em style="--w:${v}%"></em></i><b>${v}%</b></div>`).join('')}</div>
+      <div class="lp-blist">${[['Food & Dining', 41], ['Shopping', 25], ['Bills & Utilities', 18]].map(([n, v]) => `<div><span>${n}</span><i><em style="--w:${v}%"></em></i><b>${v}%</b></div>`).join('')}</div>
     </div>
   </div>
 </div>`;

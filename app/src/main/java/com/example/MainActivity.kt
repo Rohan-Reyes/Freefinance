@@ -87,6 +87,7 @@ class MainActivity : FragmentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    com.example.util.DemoSeeder.seedIfNeeded(applicationContext)
     enableEdgeToEdge()
 
     handleIntent(intent)

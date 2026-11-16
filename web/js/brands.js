@@ -1,7 +1,7 @@
 // Brand-styled looks for Philippine banks / e-wallets (mirrors app/.../ui/brand/Brands.kt).
 // Drawn styles in each issuer's colours with its name as a wordmark — not official logo artwork.
-import { esc } from './ui.js?v=14';
-import { store } from './store.js?v=14';
+import { esc } from './ui.js?v=15';
+import { store } from './store.js?v=15';
 
 /** sha256 of the real app icon the phone uploaded for this brand (see ServerSyncManager.refreshBankLogos). */
 export function logoSha(b) {
@@ -16,7 +16,7 @@ export const BRANDS = [
   B('maribank', 'MariBank', 'MariBank', 'M', ['#FF8A1E', '#F26A0A', '#D9480F'], '#FFE0BF', ['maribank', 'mari bank']),
   B('seabank', 'SeaBank', 'SeaBank', 'S', ['#FF6B3D', '#E8491D', '#B8340F'], '#FFD4C2', ['seabank', 'sea bank']),
   B('gotyme', 'GoTyme', 'GoTyme', 'GT', ['#16C7C1', '#0B8C9A', '#0A3946'], '#B8FFF6', ['gotyme', 'go tyme']),
-  B('bdo', 'BDO', 'BDO', 'B', ['#1046B8', '#0A3592', '#06225F'], '#FFC72C', ['bdo', 'banco de oro']),
+  B('bdo', 'BDO', 'BDO', 'BDO', ['#1046B8', '#0A3592', '#06225F'], '#FFC72C', ['bdo', 'banco de oro']),
   B('bpi', 'BPI', 'BPI', 'B', ['#C8161D', '#9E1016', '#66090D'], '#FFD6D7', ['bpi']),
   B('unionbank', 'UnionBank', 'UnionBank', 'U', ['#FF8A00', '#E56E00', '#3B3B3F'], '#FFE2BD', ['unionbank', 'union bank']),
   B('metrobank', 'Metrobank', 'Metrobank', 'M', ['#2361C7', '#16479A', '#0B2A5E'], '#CFE0FF', ['metrobank', 'metro bank']),
@@ -51,7 +51,7 @@ export function detectBrand(...names) {
 /** Small rounded-square mark (gradient + monogram) for account rows. */
 export const brandMark = (b, size = 36) => {
   const sha = logoSha(b);
-  const drawn = `<span class="brand-mark" style="width:${size}px;height:${size}px;background:linear-gradient(135deg,${b.colors.join(',')});color:${b.ink};font-size:${Math.round(size * (b.mono.length > 1 ? 0.36 : 0.48))}px">${esc(b.mono)}</span>`;
+  const drawn = `<span class="brand-mark" style="width:${size}px;height:${size}px;background:linear-gradient(135deg,${b.colors.join(',')});color:${b.ink};font-size:${Math.round(size * (b.mono.length > 2 ? 0.27 : b.mono.length > 1 ? 0.36 : 0.48))}px">${esc(b.mono)}</span>`;
   return sha ? `<img class="brand-logo" data-sha="${sha}" data-fallback="${esc(drawn)}" alt="${esc(b.name)}" width="${size}" height="${size}">` : drawn;
 };
 

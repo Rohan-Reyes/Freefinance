@@ -63,7 +63,7 @@ object Brands {
         FinanceBrand("maribank", "MariBank", "MariBank", "M", listOf(Color(0xFFFF8A1E), Color(0xFFF26A0A), Color(0xFFD9480F)), Color(0xFFFFE0BF), pattern = BrandPattern.ORBIT, keywords = listOf("maribank", "mari bank")),
         FinanceBrand("seabank", "SeaBank", "SeaBank", "S", listOf(Color(0xFFFF6B3D), Color(0xFFE8491D), Color(0xFFB8340F)), Color(0xFFFFD4C2), pattern = BrandPattern.WAVES, keywords = listOf("seabank", "sea bank")),
         FinanceBrand("gotyme", "GoTyme", "GoTyme", "GT", listOf(Color(0xFF16C7C1), Color(0xFF0B8C9A), Color(0xFF0A3946)), Color(0xFFB8FFF6), pattern = BrandPattern.DIAGONAL, keywords = listOf("gotyme", "go tyme")),
-        FinanceBrand("bdo", "BDO", "BDO", "B", listOf(Color(0xFF1046B8), Color(0xFF0A3592), Color(0xFF06225F)), Color(0xFFFFC72C), pattern = BrandPattern.ARC, keywords = listOf("bdo", "banco de oro")),
+        FinanceBrand("bdo", "BDO", "BDO", "BDO", listOf(Color(0xFF1046B8), Color(0xFF0A3592), Color(0xFF06225F)), Color(0xFFFFC72C), pattern = BrandPattern.ARC, keywords = listOf("bdo", "banco de oro")),
         FinanceBrand("bpi", "BPI", "BPI", "B", listOf(Color(0xFFC8161D), Color(0xFF9E1016), Color(0xFF66090D)), Color(0xFFFFD6D7), pattern = BrandPattern.DIAGONAL, keywords = listOf("bpi", "bank of the philippine islands")),
         FinanceBrand("unionbank", "UnionBank", "UnionBank", "U", listOf(Color(0xFFFF8A00), Color(0xFFE56E00), Color(0xFF3B3B3F)), Color(0xFFFFE2BD), pattern = BrandPattern.ORBIT, keywords = listOf("unionbank", "union bank", "ubp")),
         FinanceBrand("metrobank", "Metrobank", "Metrobank", "M", listOf(Color(0xFF2361C7), Color(0xFF16479A), Color(0xFF0B2A5E)), Color(0xFFCFE0FF), pattern = BrandPattern.WAVES, keywords = listOf("metrobank", "metro bank")),
@@ -120,7 +120,7 @@ fun BrandMark(brand: FinanceBrand, modifier: Modifier = Modifier, size: Dp = 40.
                 fontFamily = OutfitFontFamily,
                 fontWeight = FontWeight.ExtraBold,
                 fontStyle = if (brand.italic) FontStyle.Italic else FontStyle.Normal,
-                fontSize = (size.value * if (brand.monogram.length > 1) 0.36f else 0.48f).sp
+                fontSize = (size.value * when (brand.monogram.length) { 1 -> 0.48f; 2 -> 0.36f; else -> 0.27f }).sp
             )
         )
     }

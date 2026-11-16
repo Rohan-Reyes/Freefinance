@@ -1,6 +1,6 @@
 // Finance logic mirrored from the Android app (FinanceRepository, DAOs, DashboardViewModel,
 // CurrencyUtils, RecurrenceHelper, ForecastCashFlowUseCase) so both clients show the same numbers.
-import { store, SCHEMA } from './store.js?v=14';
+import { store, SCHEMA } from './store.js?v=15';
 
 // ---------------- currencies (CurrencyUtils) ----------------
 export const CURRENCIES = [

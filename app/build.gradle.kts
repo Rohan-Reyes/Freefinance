@@ -52,6 +52,15 @@ android {
       signingConfig = signingConfigs.getByName(if (uploadKeyReady) "release" else "debugConfig")
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    // Demo build: installs next to the real app (".demo" ID) and loads fictional sample data on first
+    // launch (app/src/demo/assets/demo_backup.json, from tools/make_demo_data.py). For screenshots.
+    create("demo") {
+      initWith(getByName("release"))
+      applicationIdSuffix = ".demo"
+      versionNameSuffix = "-demo"
+      signingConfig = signingConfigs.getByName("debugConfig")
+      matchingFallbacks += listOf("release")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

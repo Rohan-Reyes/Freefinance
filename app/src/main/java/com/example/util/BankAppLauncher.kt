@@ -22,7 +22,7 @@ object BankAppLauncher {
         BankAppInfo(
             displayName = "MariBank",
             packageName = "com.maribank.ph",
-            alternatePackages = listOf("com.maribank.sg", "com.maribank.id", "ph.com.maribank"),
+            alternatePackages = listOf("ph.seabank.seabank", "com.maribank.sg", "com.maribank.id", "ph.com.maribank"),
             keywords = listOf("maribank", "mari bank", "mari", "shopee maribank")
         ),
         BankAppInfo(

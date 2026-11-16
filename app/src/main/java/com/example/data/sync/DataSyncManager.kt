@@ -32,6 +32,10 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.flow.first
 
+/** Optional text field: null for a missing key, JSON null, or blank (optString would return "null"). */
+private fun JSONObject.optText(key: String): String? =
+    if (!has(key) || isNull(key)) null else optString(key, "").takeIf { it.isNotBlank() }
+
 /**
  * BackupDataDTO: Holds collections of every entity in the app for universal state import/export.
  */
@@ -626,11 +630,11 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                     val isLocked = obj.optBoolean("isLocked", false) || obj.has("lockedUntil")
                     val lockedUntilDate = parseNullableDate(obj.opt("lockedUntil"))
                     val includeInTally = obj.optBoolean("includeInTally", true)
-                    val linkedAppPackage = obj.optString("linkedAppPackage").takeIf { it.isNotBlank() }
+                    val linkedAppPackage = obj.optText("linkedAppPackage")
                     val parentAccountId = if (obj.has("parentAccountId") && !obj.isNull("parentAccountId")) {
                         obj.getLong("parentAccountId")
                     } else null
-                    val subAccountType = obj.optString("subAccountType").takeIf { it.isNotBlank() }
+                    val subAccountType = obj.optText("subAccountType")
                     accounts.add(
                         AccountEntity(
                             id = obj.optLong("id", 0),
@@ -828,9 +832,9 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                             expiryMonth = obj.optInt("expiryMonth", 12),
                             expiryYear = obj.optInt("expiryYear", 28),
                             cvv = obj.optString("cvv", ""),
-                            cardPinHint = obj.optString("cardPinHint").takeIf { it.isNotBlank() },
-                            billingAddress = obj.optString("billingAddress").takeIf { it.isNotBlank() },
-                            customerServicePhone = obj.optString("customerServicePhone").takeIf { it.isNotBlank() },
+                            cardPinHint = obj.optText("cardPinHint"),
+                            billingAddress = obj.optText("billingAddress"),
+                            customerServicePhone = obj.optText("customerServicePhone"),
                             currencyCode = obj.optString("currencyCode", "PHP"),
                             color = obj.optInt("color", -14579213),
                             cardFinish = obj.optString("cardFinish", "OBSIDIAN_GOLD"),
@@ -846,8 +850,8 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                             paymentDueDay = if (obj.has("paymentDueDay") && !obj.isNull("paymentDueDay")) obj.getInt("paymentDueDay") else null,
                             aprInterestRate = obj.optDouble("aprInterestRate", 0.0).toFloat(),
                             annualFee = obj.optDouble("annualFee", 0.0),
-                            rewardsProgram = obj.optString("rewardsProgram").takeIf { it.isNotBlank() },
-                            notes = obj.optString("notes").takeIf { it.isNotBlank() },
+                            rewardsProgram = obj.optText("rewardsProgram"),
+                            notes = obj.optText("notes"),
                             createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                         )
                     )
@@ -871,7 +875,7 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                             purchasePrice = obj.optDouble("purchasePrice", 0.0),
                             purchaseDate = parseNullableDate(obj.opt("purchaseDate")),
                             currencyCode = obj.optString("currencyCode", "USD").uppercase(),
-                            notes = obj.optString("notes").takeIf { obj.has("notes") && !obj.isNull("notes") },
+                            notes = obj.optText("notes"),
                             iconName = obj.optString("iconName", "ic_asset"),
                             color = obj.optInt("color", -16738120),
                             includeInNetWorth = obj.optBoolean("includeInNetWorth", true),
@@ -899,8 +903,8 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                             dueDate = parseDate(obj.opt("dueDate")),
                             targetAccountId = if (obj.has("targetAccountId") && !obj.isNull("targetAccountId")) obj.getLong("targetAccountId") else null,
                             categoryId = if (obj.has("categoryId") && !obj.isNull("categoryId")) obj.getLong("categoryId") else null,
-                            payeeOrVendor = obj.optString("payeeOrVendor").takeIf { obj.has("payeeOrVendor") && !obj.isNull("payeeOrVendor") },
-                            notes = obj.optString("notes").takeIf { obj.has("notes") && !obj.isNull("notes") },
+                            payeeOrVendor = obj.optText("payeeOrVendor"),
+                            notes = obj.optText("notes"),
                             priority = obj.optString("priority", "NORMAL"),
                             status = obj.optString("status", "PENDING"),
                             paidDate = parseNullableDate(obj.opt("paidDate")),
@@ -925,7 +929,7 @@ class DataSyncManager(private val database: AppDatabase, private val context: Co
                             id = obj.optLong("id", 0),
                             imagePath = if (obj.isNull("imagePath")) "" else obj.optString("imagePath", ""),
                             capturedAt = parseDate(obj.opt("capturedAt")),
-                            note = obj.optString("note").takeIf { obj.has("note") && !obj.isNull("note") },
+                            note = obj.optText("note"),
                             suggestedAmount = if (obj.has("suggestedAmount") && !obj.isNull("suggestedAmount")) obj.getDouble("suggestedAmount") else null,
                             suggestedType = obj.optString("suggestedType", "Expense"),
                             status = obj.optString("status", "PENDING"),
