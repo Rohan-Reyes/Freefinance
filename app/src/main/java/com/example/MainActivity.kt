@@ -1,5 +1,6 @@
 package com.example
 
+import kotlinx.coroutines.launch
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -88,6 +89,8 @@ class MainActivity : FragmentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     com.example.util.DemoSeeder.seedIfNeeded(applicationContext)
+    com.example.util.LiveRates.init(applicationContext)
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch { com.example.util.LiveRates.refresh(applicationContext) }
     enableEdgeToEdge()
 
     handleIntent(intent)

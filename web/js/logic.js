@@ -1,6 +1,6 @@
 // Finance logic mirrored from the Android app (FinanceRepository, DAOs, DashboardViewModel,
 // CurrencyUtils, RecurrenceHelper, ForecastCashFlowUseCase) so both clients show the same numbers.
-import { store, SCHEMA } from './store.js?v=15';
+import { store, SCHEMA } from './store.js?v=16';
 
 // ---------------- currencies (CurrencyUtils) ----------------
 export const CURRENCIES = [
@@ -9,12 +9,36 @@ export const CURRENCIES = [
   ['CHF', 'Swiss Franc', 'CHF', 1.111], ['CNY', 'Chinese Yuan', '¥', 0.138], ['INR', 'Indian Rupee', '₹', 0.012],
   ['PHP', 'Philippine Peso', '₱', 0.0172], ['SGD', 'Singapore Dollar', 'S$', 0.741], ['NZD', 'New Zealand Dollar', 'NZ$', 0.605],
   ['BRL', 'Brazilian Real', 'R$', 0.182], ['MXN', 'Mexican Peso', 'Mex$', 0.054],
+  ['VND', 'Vietnamese Dong', '₫', 0.0000389], ['KRW', 'South Korean Won', '₩', 0.000749], ['HKD', 'Hong Kong Dollar', 'HK$', 0.1275],
+  ['THB', 'Thai Baht', '฿', 0.0295], ['IDR', 'Indonesian Rupiah', 'Rp', 0.0000549], ['MYR', 'Malaysian Ringgit', 'RM', 0.2446],
+  ['TWD', 'New Taiwan Dollar', 'NT$', 0.0304], ['AED', 'UAE Dirham', 'AED', 0.2723], ['SAR', 'Saudi Riyal', 'SAR', 0.2667],
 ].map(([code, name, symbol, usd]) => ({ code, name, symbol, usd }));
 const CUR = Object.fromEntries(CURRENCIES.map((c) => [c.code, c]));
 const SYMBOLS = { PHP: '₱', USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'CA$', AUD: 'A$', CHF: 'CHF', CNY: '¥', INR: '₹', SGD: 'S$',
   NZD: 'NZ$', BRL: 'R$', MXN: 'Mex$', KRW: '₩', HKD: 'HK$', THB: '฿', VND: '₫', IDR: 'Rp', MYR: 'RM', TRY: '₺', RUB: '₽',
-  SEK: 'kr', NOK: 'kr', DKK: 'kr', PLN: 'zł', ZAR: 'R', AED: 'AED', SAR: 'SAR' };
+  SEK: 'kr', NOK: 'kr', DKK: 'kr', PLN: 'zł', ZAR: 'R', AED: 'AED', SAR: 'SAR', TWD: 'NT$' };
 export const symbol = (code) => SYMBOLS[String(code || '').toUpperCase()] || String(code || '').toUpperCase();
+
+// ---------------- live market rates (ExchangeRate-API open endpoint, daily, cached in this browser) ----------------
+const LIVE_URL = 'https://open.er-api.com/v6/latest/USD';
+const LIVE_KEY = 'ff_live_rates';
+const LIVE_MAX_AGE = 6 * 3600 * 1000;
+export const liveRates = (() => {
+  try { const c = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); if (c?.perUsd) return c; } catch { /* no cache */ }
+  return { perUsd: {}, updatedAt: 0, fetchedAt: 0 };
+})();
+export async function refreshLiveRates(force = false) {
+  if (!force && Date.now() - liveRates.fetchedAt < LIVE_MAX_AGE) return true;
+  try {
+    const r = await fetch(LIVE_URL, { cache: 'no-store' });
+    const j = await r.json();
+    if (j.result !== 'success' || !j.rates) return false;
+    Object.assign(liveRates, { perUsd: j.rates, updatedAt: (j.time_last_update_unix || 0) * 1000, fetchedAt: Date.now() });
+    try { localStorage.setItem(LIVE_KEY, JSON.stringify(liveRates)); } catch { /* storage full or blocked */ }
+    store.emit();
+    return true;
+  } catch { return false; }
+}
 
 export function convert(amount, from, to, rates = store.all('exchange_rates')) {
   from = String(from || '').toUpperCase().trim(); to = String(to || '').toUpperCase().trim();
@@ -23,6 +47,8 @@ export function convert(amount, from, to, rates = store.all('exchange_rates')) {
   if (direct && direct.rate > 0) return amount * direct.rate;
   const inverse = rates.find((r) => r.from_currency.toUpperCase() === to && r.to_currency.toUpperCase() === from);
   if (inverse && inverse.rate > 0) return amount / inverse.rate;
+  const lf = liveRates.perUsd[from], lt = liveRates.perUsd[to];
+  if (lf > 0 && lt > 0) return (amount / lf) * lt;
   const f = CUR[from]?.usd ?? 1, t = CUR[to]?.usd ?? 1;
   return t <= 0 ? amount : (amount * f) / t;
 }

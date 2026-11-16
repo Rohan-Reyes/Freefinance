@@ -134,6 +134,7 @@ import com.example.data.preferences.AppThemePreset
 import com.example.data.preferences.HeroBackgroundStyle
 import com.example.util.BiometricAuthHelper
 import com.example.util.CurrencyUtils
+import kotlinx.coroutines.launch
 import com.example.viewmodels.DashboardEvent
 import com.example.viewmodels.DashboardViewModel
 import kotlinx.coroutines.flow.collectLatest
@@ -762,6 +763,63 @@ fun SettingsScreen(
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
+                        // Live market rates (daily, cached for offline use)
+                        val live by com.example.util.LiveRates.state.collectAsState()
+                        val fxScope = androidx.compose.runtime.rememberCoroutineScope()
+                        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                        var fxStatus by remember { mutableStateOf<String?>(null) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Live market rates",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                val base = uiState.baseCurrency
+                                val sample = if (base == "USD") "EUR" else "USD"
+                                val line = if (live.perUsd.isEmpty()) "Not downloaded yet"
+                                else "1 $sample = " + CurrencyUtils.formatCurrency(CurrencyUtils.convert(1.0, sample, base), base) +
+                                    " · updated " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault())
+                                        .format(java.util.Date(live.updatedAt.takeIf { it > 0 } ?: live.fetchedAt))
+                                Text(
+                                    text = fxStatus ?: line,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Rates by Exchange Rate API",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable { uriHandler.openUri("https://www.exchangerate-api.com") }
+                                )
+                            }
+                            Surface(
+                                onClick = {
+                                    fxStatus = "Refreshing…"
+                                    fxScope.launch {
+                                        val ok = com.example.util.LiveRates.refresh(context, force = true)
+                                        fxStatus = if (ok) null else "Couldn't refresh. Check your connection."
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = "Refresh",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
                         // Custom Exchange Rates Header
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -770,12 +828,12 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Custom Exchange Rate Overrides",
+                                    text = "Custom rates",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Override default international conversion ratios",
+                                    text = "Your own rates take priority over live rates",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -814,7 +872,7 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "No custom FX rates configured. Using built-in international conversion ratios.",
+                                    text = "No custom rates. Using live market rates.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(12.dp)

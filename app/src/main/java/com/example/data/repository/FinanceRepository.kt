@@ -129,7 +129,9 @@ class FinanceRepository(
     }
 
     // --- Exchange Rate Streams & Operations ---
-    val allExchangeRates: Flow<List<ExchangeRateEntity>> = exchangeRateDao.getAllRates()
+    // Re-emits when live market rates refresh, so every converted total recomputes.
+    val allExchangeRates: Flow<List<ExchangeRateEntity>> =
+        kotlinx.coroutines.flow.combine(exchangeRateDao.getAllRates(), com.example.util.LiveRates.state) { rates, _ -> rates }
 
     suspend fun insertExchangeRate(rate: ExchangeRateEntity): Long = exchangeRateDao.insertRate(rate)
 
@@ -169,14 +171,18 @@ class FinanceRepository(
         val accounts = accountDao.getAllAccountsImmediate()
         for (acc in accounts) {
             val txSum = accountDao.getClearedTransactionSumForAccount(acc.id)
+            // Only write when the value really changes: a no-op UPDATE still counts as an edit for sync
+            // and would overwrite newer changes made on other devices.
             if (acc.initialBalance == 0.0 && acc.currentBalance > 0.0) {
                 // If account had a positive balance with 0 initial balance, calibrate initialBalance
                 val calibratedInitial = acc.currentBalance - txSum
-                accountDao.updateAccount(acc.copy(initialBalance = calibratedInitial))
+                if (kotlin.math.abs(calibratedInitial - acc.initialBalance) > 0.005) accountDao.updateAccount(acc.copy(initialBalance = calibratedInitial))
+                else accountDao.recalculateAccountBalance(acc.id)
             } else if (acc.currentBalance < 0.0 && acc.initialBalance <= 0.0 && txSum < 0.0) {
                 // Keep initialBalance aligned with currentBalance so user can easily adjust it
                 val calibratedInitial = acc.currentBalance - txSum
-                accountDao.updateAccount(acc.copy(initialBalance = calibratedInitial))
+                if (kotlin.math.abs(calibratedInitial - acc.initialBalance) > 0.005) accountDao.updateAccount(acc.copy(initialBalance = calibratedInitial))
+                else accountDao.recalculateAccountBalance(acc.id)
             } else {
                 accountDao.recalculateAccountBalance(acc.id)
             }

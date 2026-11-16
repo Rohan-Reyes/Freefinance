@@ -62,7 +62,16 @@ object CurrencyUtils {
         CurrencyInfo("SGD", "Singapore Dollar", "S$", 0.741),
         CurrencyInfo("NZD", "New Zealand Dollar", "NZ$", 0.605),
         CurrencyInfo("BRL", "Brazilian Real", "R$", 0.182),
-        CurrencyInfo("MXN", "Mexican Peso", "Mex$", 0.054)
+        CurrencyInfo("MXN", "Mexican Peso", "Mex$", 0.054),
+        CurrencyInfo("VND", "Vietnamese Dong", "₫", 0.0000389),
+        CurrencyInfo("KRW", "South Korean Won", "₩", 0.000749),
+        CurrencyInfo("HKD", "Hong Kong Dollar", "HK$", 0.1275),
+        CurrencyInfo("THB", "Thai Baht", "฿", 0.0295),
+        CurrencyInfo("IDR", "Indonesian Rupiah", "Rp", 0.0000549),
+        CurrencyInfo("MYR", "Malaysian Ringgit", "RM", 0.2446),
+        CurrencyInfo("TWD", "New Taiwan Dollar", "NT$", 0.0304),
+        CurrencyInfo("AED", "UAE Dirham", "AED", 0.2723),
+        CurrencyInfo("SAR", "Saudi Riyal", "SAR", 0.2667)
     )
 
     private val currencyMap: Map<String, CurrencyInfo> =
@@ -208,7 +217,14 @@ object CurrencyUtils {
             return amount / inverseMatch.rate
         }
 
-        // 3. Fall back to standard benchmark market rates (bridging via USD)
+        // 3. Live market rates (bridging via USD), refreshed daily and cached offline
+        val liveFrom = LiveRates.perUsd(from)
+        val liveTo = LiveRates.perUsd(to)
+        if (liveFrom != null && liveTo != null) {
+            return amount / liveFrom * liveTo
+        }
+
+        // 4. Fall back to built-in benchmark rates (bridging via USD)
         val fromInfo = currencyMap[from]
         val toInfo = currencyMap[to]
 

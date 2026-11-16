@@ -56,6 +56,12 @@ object BankAppLauncher {
             keywords = listOf("bpi", "bpi app", "bank of the philippine islands", "bpi express")
         ),
         BankAppInfo(
+            displayName = "LANDBANK",
+            packageName = "com.landbank.mobilebanking",
+            alternatePackages = listOf("com.landbank.ibank", "ph.com.landbank"),
+            keywords = listOf("landbank", "land bank", "lbp")
+        ),
+        BankAppInfo(
             displayName = "UnionBank",
             packageName = "com.unionbankph.online",
             alternatePackages = listOf("ph.com.unionbank"),

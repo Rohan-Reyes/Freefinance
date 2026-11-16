@@ -1,7 +1,7 @@
 // Brand-styled looks for Philippine banks / e-wallets (mirrors app/.../ui/brand/Brands.kt).
 // Drawn styles in each issuer's colours with its name as a wordmark — not official logo artwork.
-import { esc } from './ui.js?v=15';
-import { store } from './store.js?v=15';
+import { esc } from './ui.js?v=16';
+import { store } from './store.js?v=16';
 
 /** sha256 of the real app icon the phone uploaded for this brand (see ServerSyncManager.refreshBankLogos). */
 export function logoSha(b) {

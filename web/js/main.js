@@ -1,9 +1,9 @@
-import { store, api } from './store.js?v=15';
-import { PAGES, NAV } from './pages.js?v=15';
-import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=15';
-import { lock, showLockScreen } from './security.js?v=15';
-import { hydratePhotos, viewPhoto } from './images.js?v=15';
-import { renderLanding } from './landing.js?v=15';
+import { store, api } from './store.js?v=16';
+import { PAGES, NAV } from './pages.js?v=16';
+import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=16';
+import { lock, showLockScreen } from './security.js?v=16';
+import { hydratePhotos, viewPhoto } from './images.js?v=16';
+import { renderLanding } from './landing.js?v=16';
 
 const app = document.getElementById('app');
 applyTheme();
@@ -79,7 +79,7 @@ document.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-action-global]');
   if (g) {
     if (g.dataset.actionGlobal === 'sync') store.sync().then(() => toast('Synced')).catch((x) => toast(x.message, 'err'));
-    if (g.dataset.actionGlobal === 'add') (await import('./pages.js?v=15')).openTxForm(null);
+    if (g.dataset.actionGlobal === 'add') (await import('./pages.js?v=16')).openTxForm(null);
     if (g.dataset.actionGlobal === 'lock') lock.lockNow();
     return;
   }
@@ -132,6 +132,7 @@ async function start() {
   await store.load();
   applyTheme();
   let queued = false;
+  import('./logic.js?v=16').then((L) => { L.refreshLiveRates(); setInterval(() => L.refreshLiveRates(), 3600 * 1000); });
   store.subscribe(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; applyTheme(); render(); }); });
   window.addEventListener('hashchange', () => { render(); document.getElementById('main')?.scrollTo?.(0, 0); window.scrollTo(0, 0); });
   render();

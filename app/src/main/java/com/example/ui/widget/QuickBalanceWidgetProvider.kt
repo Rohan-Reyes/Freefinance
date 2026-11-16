@@ -26,6 +26,7 @@ class QuickBalanceWidgetProvider : AppWidgetProvider() {
             val pendingQuickAddIntent = FinanceAppWidgetManager.getAppOpenPendingIntent(context, quickAdd = true)
 
             CoroutineScope(Dispatchers.IO).launch {
+                com.example.util.LiveRates.init(context)
                 val db = AppDatabase.getDatabase(context)
                 val accounts = try { db.accountDao().getAllAccounts().first() } catch (e: Exception) { emptyList() }
                 val tallyAccounts = accounts.filter { it.includeInTally }

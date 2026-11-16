@@ -1,6 +1,6 @@
 // App lock (4-digit PIN) — mirrors the Android BiometricLockScreen behaviour, per browser.
 // The PIN is never stored: only a salted PBKDF2 hash, in this browser's localStorage.
-import { viewPrefs, esc, toast } from './ui.js?v=15';
+import { viewPrefs, esc, toast } from './ui.js?v=16';
 
 const KEY = 'ff_lock';
 const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
