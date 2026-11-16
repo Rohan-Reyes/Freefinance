@@ -9,7 +9,7 @@
 [![Latest release](https://img.shields.io/github/v/release/Rohan-Reyes/Freefinance?label=download&color=F5A020)](https://github.com/Rohan-Reyes/Freefinance/releases/latest)
 [![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/Rohan-Reyes/Freefinance/releases/latest)
 [![Kotlin](https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![License: MIT](https://img.shields.io/badge/license-MIT-1A4D9C)](#license)
+[![License: MIT](https://img.shields.io/badge/license-MIT-1A4D9C)](LICENSE)
 
 [**Download the APK**](https://github.com/Rohan-Reyes/Freefinance/releases/latest) · [Web app](https://budgets.aten-systems.site) · [ATEN Systems](https://aten-systems.site)
 
@@ -103,4 +103,4 @@ docs/      README images
 
 ## License
 
-MIT. Made by Rohan Reyes · [ATEN Systems](https://aten-systems.site).
+[MIT](LICENSE). Made by Rohan Reyes · [ATEN Systems](https://aten-systems.site).
