@@ -46,6 +46,7 @@ import com.example.ui.widget.FinanceAppWidgetManager
 import com.example.util.CurrencyUtils
 import com.example.util.DataExportUtils
 import com.example.util.ReceiptStorageHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -660,7 +662,7 @@ class DashboardViewModel(
             recentTransactions = transactions.take(20),
             isLoading = false
         )
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = DashboardUiState(isLoading = false)
@@ -680,7 +682,7 @@ class DashboardViewModel(
             accounts = accounts,
             daysAhead = 30
         )
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
@@ -700,7 +702,7 @@ class DashboardViewModel(
             accounts = accounts,
             daysAhead = 7
         )
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
@@ -740,7 +742,7 @@ class DashboardViewModel(
                 totalExpense = expense,
                 netCashFlow = income - expense
             )
-        }.stateIn(
+        }.flowOn(Dispatchers.Default).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = MoneyFlowState()
@@ -762,7 +764,7 @@ class DashboardViewModel(
                 total = total,
                 liquidRatio = ratio
             )
-        }.stateIn(
+        }.flowOn(Dispatchers.Default).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = LiquidVsLockedState()
@@ -826,7 +828,7 @@ class DashboardViewModel(
                 targetBudget = 1500.0,
                 transactionCount = count
             )
-        }.stateIn(
+        }.flowOn(Dispatchers.Default).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = ProjectTrackerState()
@@ -870,7 +872,7 @@ class DashboardViewModel(
             )
         }
         list
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
@@ -988,7 +990,7 @@ class DashboardViewModel(
             )
         }
         result
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()

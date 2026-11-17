@@ -210,7 +210,9 @@ function auth(req) {
   if (!m) throw new HttpError(401, 'Not signed in');
   const dev = q.deviceByToken.get(sha256(m[1]));
   if (!dev) throw new HttpError(401, 'Session expired or revoked');
-  q.touchDevice.run(Date.now(), dev.device_no);
+  // last_seen only feeds the Devices list; one write a minute per device spares the SD card from a write on every poll
+  const t = Date.now();
+  if (!(dev.last_seen > t - 60_000)) q.touchDevice.run(t, dev.device_no);
   return dev;
 }
 
