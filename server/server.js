@@ -29,6 +29,11 @@ const PULL_LIMIT = 2000;
 const DEVICE_SPAN = 2 ** 40;
 const MAX_DEVICES = 8191; // keeps global ids below 2^53 (JS safe integers)
 const MAX_USERS = Math.max(1, Number(process.env.FF_MAX_USERS || 50));
+// Device numbers are one pool shared by every account; a per-account cap (sized so MAX_USERS accounts fit in the pool)
+// stops one account from using them all up by signing in again and again.
+const MAX_DEVICES_PER_USER = Math.max(10, Math.floor(MAX_DEVICES / MAX_USERS) - 1);
+// A session that hasn't been used for this long is revoked; the device signs in again.
+const SESSION_IDLE_MS = Math.max(1, Number(process.env.FF_SESSION_IDLE_DAYS || 180)) * 86400e3;
 const DOWNLOAD_DIR = path.join(DATA_DIR, 'downloads');
 const APK_NAME = 'my-finance.apk';
 // Per-account storage limits, so one account cannot fill the server's disk.
@@ -110,6 +115,8 @@ const q = {
   deviceByToken: db.prepare('SELECT * FROM devices WHERE token_hash = ? AND revoked = 0'),
   deviceByNo: db.prepare('SELECT * FROM devices WHERE device_no = ?'),
   maxDevice: db.prepare('SELECT COALESCE(MAX(device_no), 0) m FROM devices'),
+  userDeviceCount: db.prepare('SELECT COUNT(*) n FROM devices WHERE user_id = ?'),
+  expireDevice: db.prepare('UPDATE devices SET revoked = 1, token_hash = NULL WHERE device_no = ?'),
   addDevice: db.prepare('INSERT INTO devices(device_no, name, kind, token_hash, created_at, last_seen, user_id) VALUES(?, ?, ?, ?, ?, ?, ?)'),
   reuseDevice: db.prepare('UPDATE devices SET name = ?, kind = ?, token_hash = ?, last_seen = ?, revoked = 0 WHERE device_no = ?'),
   touchDevice: db.prepare('UPDATE devices SET last_seen = ? WHERE device_no = ?'),
@@ -210,6 +217,10 @@ function auth(req) {
   if (!m) throw new HttpError(401, 'Not signed in');
   const dev = q.deviceByToken.get(sha256(m[1]));
   if (!dev) throw new HttpError(401, 'Session expired or revoked');
+  if (dev.last_seen && Date.now() - dev.last_seen > SESSION_IDLE_MS) {
+    q.expireDevice.run(dev.device_no);
+    throw new HttpError(401, 'Session expired or revoked');
+  }
   // last_seen only feeds the Devices list; one write a minute per device spares the SD card from a write on every poll
   const t = Date.now();
   if (!(dev.last_seen > t - 60_000)) q.touchDevice.run(t, dev.device_no);
@@ -227,6 +238,7 @@ function issueDevice(body, userId) {
   if (existing && existing.user_id === userId) {
     q.reuseDevice.run(name, kind, sha256(token), now, no);
   } else {
+    if (q.userDeviceCount.get(userId).n >= MAX_DEVICES_PER_USER) throw new HttpError(409, 'Too many devices have signed in to this account');
     no = q.maxDevice.get().m + 1;
     if (no > MAX_DEVICES) throw new HttpError(409, 'Device limit reached');
     q.addDevice.run(no, name, kind, sha256(token), now, now, userId);

@@ -105,6 +105,12 @@ class MainActivity : FragmentActivity() {
       val lockEnabledAtLaunch by dashboardViewModel.lockEnabledAtLaunch.collectAsState()
       // Balances are never drawn while locked or before the lock setting is known (no flash on start).
       val showLock = isAppLocked && (biometricLockEnabled || lockEnabledAtLaunch)
+      // With app lock on, the Recents switcher shows a blank card instead of a snapshot of your balances.
+      androidx.compose.runtime.LaunchedEffect(biometricLockEnabled) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+          setRecentsScreenshotEnabled(!biometricLockEnabled)
+        }
+      }
 
       MyApplicationTheme(
         themeMode = appThemeMode,

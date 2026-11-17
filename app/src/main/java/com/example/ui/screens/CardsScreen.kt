@@ -15,6 +15,12 @@ import com.example.ui.brand.NetworkMark
 import com.example.ui.brand.drawBrandPattern
 import java.util.Locale
 import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ContextWrapper
+import android.app.Activity
+import android.os.Build
+import android.os.PersistableBundle
+import android.view.WindowManager
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
@@ -96,6 +102,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -220,6 +227,14 @@ fun CardsScreen(
 
     var selectedFilter by remember { mutableStateOf("ALL") } // ALL, DEBIT, CREDIT, VIRTUAL
     var revealedCardIds by remember { mutableStateOf(setOf<Long>()) }
+
+    // While a full card number / CVV is on screen, block screenshots, screen recording and the Recents preview.
+    val anyRevealed = revealedCardIds.isNotEmpty()
+    DisposableEffect(anyRevealed) {
+        val window = context.findActivity()?.window
+        if (anyRevealed) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose { if (anyRevealed) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
 
     var showAddEditSheet by remember { mutableStateOf(false) }
     var cardToEdit by remember { mutableStateOf<PaymentCardEntity?>(null) }
@@ -2708,8 +2723,32 @@ private fun AdjustCreditLimitDialog(
     )
 }
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/**
+ * Card details are copied as sensitive (hidden from the keyboard's clipboard preview on Android 13+) and are
+ * cleared from the clipboard after a minute if nothing else was copied since.
+ */
 private fun copyToClipboard(context: Context, label: String, value: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-    clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
-    Toast.makeText(context, "$label copied to clipboard", Toast.LENGTH_SHORT).show()
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    val clip = ClipData.newPlainText(label, value)
+    clip.description.extras = PersistableBundle().apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+        else putBoolean("android.content.extra.IS_SENSITIVE", true)
+    }
+    clipboard.setPrimaryClip(clip)
+    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        runCatching {
+            val current = clipboard.primaryClip
+            if (current != null && current.itemCount > 0 && current.getItemAt(0).text?.toString() == value) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) clipboard.clearPrimaryClip()
+                else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+            }
+        }
+    }, 60_000L)
+    Toast.makeText(context, "$label copied · clears in 1 minute", Toast.LENGTH_SHORT).show()
 }
