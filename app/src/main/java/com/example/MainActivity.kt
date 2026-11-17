@@ -328,6 +328,19 @@ class MainActivity : FragmentActivity() {
 
           TransactionSuccessAnimationOverlay(viewModel = dashboardViewModel)
 
+          // Daily automatic update check (GitHub Releases + sync server); never shown over the lock screen.
+          var autoUpdate by remember { mutableStateOf<com.example.util.UpdateChecker.Update?>(null) }
+          androidx.compose.runtime.LaunchedEffect(Unit) {
+            autoUpdate = runCatching { com.example.util.UpdateChecker.dailyCheck(applicationContext) }.getOrNull()
+          }
+          if (lockStateReady && !showLock) autoUpdate?.let { u ->
+            com.example.ui.components.UpdateDialog(
+              update = u,
+              onDismiss = { autoUpdate = null },
+              onLater = { com.example.util.UpdateChecker.dismiss(applicationContext, u.versionName); autoUpdate = null }
+            )
+          }
+
           AnimatedVisibility(
             visible = showLock,
             enter = fadeIn(animationSpec = tween(220)),

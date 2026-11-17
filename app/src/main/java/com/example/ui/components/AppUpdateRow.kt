@@ -1,13 +1,17 @@
 package com.example.ui.components
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
@@ -17,7 +21,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,29 +33,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
-import com.example.data.sync.ServerSyncManager
 import com.example.ui.components.ds.IconBadge
-import kotlinx.coroutines.Dispatchers
+import com.example.util.UpdateChecker
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-
-private data class ServerApp(val versionCode: Int, val versionName: String, val sizeMb: Double, val url: String)
 
 /**
- * "Check for updates": asks the sync server (same address as Server Sync) which APK it hosts and
- * offers to download it when it's newer than this build. Installing over the app keeps all data.
+ * "Check for updates": looks for a newer version on GitHub Releases and on the sync server and offers
+ * to download the newest one. Installing over the app keeps all data.
  */
 @Composable
 fun AppUpdateRow(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sync by ServerSyncManager.get(context.applicationContext).state.collectAsState()
     var checking by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var offer by remember { mutableStateOf<ServerApp?>(null) }
+    var offer by remember { mutableStateOf<UpdateChecker.Update?>(null) }
 
     Surface(
         onClick = {
@@ -60,15 +55,12 @@ fun AppUpdateRow(modifier: Modifier = Modifier) {
             checking = true
             message = null
             scope.launch {
-                val result = withContext(Dispatchers.IO) { runCatching { fetchServerApp(sync.serverUrl) } }
+                when (val r = UpdateChecker.check(context.applicationContext)) {
+                    is UpdateChecker.Result.Available -> offer = r.update
+                    UpdateChecker.Result.UpToDate -> message = "You're on the latest version (${BuildConfig.VERSION_NAME})"
+                    UpdateChecker.Result.Unreachable -> message = "Couldn't check for updates. Check your connection."
+                }
                 checking = false
-                result.onSuccess { app ->
-                    when {
-                        app == null -> message = "No app download on ${sync.serverUrl.removePrefix("https://")} yet"
-                        app.versionCode > BuildConfig.VERSION_CODE -> offer = app
-                        else -> message = "You're on the latest version (${BuildConfig.VERSION_NAME})"
-                    }
-                }.onFailure { message = "Couldn't reach the server. Check your connection." }
             }
         },
         color = Color.Transparent,
@@ -84,7 +76,7 @@ fun AppUpdateRow(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Check for updates", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Text(
-                    message ?: "Version ${BuildConfig.VERSION_NAME}",
+                    message ?: "Version ${BuildConfig.VERSION_NAME} · checks GitHub and your sync server",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -93,40 +85,59 @@ fun AppUpdateRow(modifier: Modifier = Modifier) {
         }
     }
 
-    offer?.let { app ->
-        AlertDialog(
-            onDismissRequest = { offer = null },
-            title = { Text("Update available") },
-            text = {
-                Text("Version ${app.versionName} (${"%.1f".format(app.sizeMb)} MB) is ready. Download it and open the file to install over this app; your data stays.")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    offer = null
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(app.url))) } catch (_: Exception) { message = "No browser available to download" }
-                }) { Text("Download") }
-            },
-            dismissButton = { TextButton(onClick = { offer = null }) { Text("Later") } }
-        )
+    offer?.let { u ->
+        UpdateDialog(u, onDismiss = { offer = null }, onLater = { offer = null })
     }
 }
 
-private fun fetchServerApp(serverUrl: String): ServerApp? {
-    val base = serverUrl.trimEnd('/')
-    val conn = (URL("$base/api/app-version").openConnection() as HttpURLConnection).apply {
-        connectTimeout = 10_000
-        readTimeout = 10_000
-    }
+/** Shared "Update available" prompt (Settings and the daily automatic check). */
+@Composable
+fun UpdateDialog(update: UpdateChecker.Update, onDismiss: () -> Unit, onLater: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update available: ${update.versionName}") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "You have ${BuildConfig.VERSION_NAME}. Download ${update.versionName}" +
+                        (if (update.sizeMb > 0) " (${"%.1f".format(update.sizeMb)} MB)" else "") +
+                        " from ${update.source} and open the file to install over this app. Your data stays."
+                )
+                val notes = releaseNotesText(update.notes)
+                if (notes.isNotBlank()) {
+                    Text(notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                openUrl(context, update.downloadUrl)
+            }) { Text("Download") }
+        },
+        dismissButton = { TextButton(onClick = onLater) { Text("Later") } }
+    )
+}
+
+/** Release notes are Markdown; show them as plain text without the install boilerplate and checksum. */
+fun releaseNotesText(md: String): String = md.lines()
+    .filterNot { it.startsWith("SHA-256") }
+    .joinToString("\n")
+    .replace(Regex("(?s)## Install.*?(?=\\n## |$)"), "")
+    .replace(Regex("^#+\\s*", RegexOption.MULTILINE), "")
+    .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+    .replace(Regex("\\[(.+?)]\\((.+?)\\)"), "$1")
+    .replace(Regex("^- ", RegexOption.MULTILINE), "• ")
+    .replace("`", "")
+    .replace(Regex("\\n{3,}"), "\n\n")
+    .trim()
+
+fun openUrl(context: Context, url: String) {
     try {
-        val body = conn.inputStream.bufferedReader().use { it.readText() }
-        val app = JSONObject(body).optJSONObject("app") ?: return null
-        return ServerApp(
-            versionCode = app.optInt("versionCode", 0),
-            versionName = app.optString("versionName", "?"),
-            sizeMb = app.optLong("size", 0) / 1_048_576.0,
-            url = base + app.optString("url", "/download/my-finance.apk")
-        )
-    } finally {
-        conn.disconnect()
-    }
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: Exception) { /* no browser */ }
 }
