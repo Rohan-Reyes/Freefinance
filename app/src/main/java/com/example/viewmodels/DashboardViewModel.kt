@@ -77,8 +77,14 @@ sealed interface UndoableAction {
 }
 
 data class DashboardUiState(
+    /** Hero number: liquid funds, or net worth (liquid + savings + assets) when assets are included. */
     val totalBalance: Double = 0.0,
+    /** All accounts in the total (liquid + savings), base currency. */
     val cashBalance: Double = 0.0,
+    /** Spendable money: accounts that are not savings or locked. Assets are never liquid. */
+    val liquidBalance: Double = 0.0,
+    /** Savings, time deposits, investments and locked accounts. */
+    val savingsBalance: Double = 0.0,
     val assetsBalance: Double = 0.0,
     val includeAssetsInHero: Boolean = true,
     val assetsCount: Int = 0,
@@ -623,14 +629,8 @@ class DashboardViewModel(
         val tallyAccounts = accounts.filter { it.includeInTally }
         val excludedCount = accounts.size - tallyAccounts.size
 
-        val convertedCashBalance = tallyAccounts.sumOf { acc ->
-            CurrencyUtils.convert(
-                amount = acc.currentBalance,
-                fromCurrency = acc.currencyCode,
-                toCurrency = baseCurr,
-                exchangeRates = rates
-            )
-        }
+        val funds = com.example.util.Funds.split(accounts, baseCurr, rates)
+        val convertedCashBalance = funds.total
         val includedAssets = assets.filter { it.includeInNetWorth }
         val convertedAssetsBalance = includedAssets.sumOf { asset ->
             CurrencyUtils.convert(
@@ -640,11 +640,14 @@ class DashboardViewModel(
                 exchangeRates = rates
             )
         }
-        val displayedTotal = if (includeAssets) (convertedCashBalance + convertedAssetsBalance) else convertedCashBalance
+        // Savings and assets are not liquid: the hero shows liquid funds unless assets are included (net worth).
+        val displayedTotal = if (includeAssets) (convertedCashBalance + convertedAssetsBalance) else funds.liquid
 
         DashboardUiState(
             totalBalance = displayedTotal,
             cashBalance = convertedCashBalance,
+            liquidBalance = funds.liquid,
+            savingsBalance = funds.savings,
             assetsBalance = convertedAssetsBalance,
             includeAssetsInHero = includeAssets,
             assetsCount = assets.size,
@@ -671,7 +674,7 @@ class DashboardViewModel(
         repository.allAccounts
     ) { currentUiState, plannedOrRecurringTxs, pendingMilestones, accounts ->
         forecastUseCase.execute(
-            startingBalance = currentUiState.totalBalance,
+            startingBalance = currentUiState.cashBalance,
             scheduledTransactions = plannedOrRecurringTxs,
             pendingMilestones = pendingMilestones,
             accounts = accounts,
@@ -691,7 +694,7 @@ class DashboardViewModel(
         repository.allAccounts
     ) { currentUiState, plannedOrRecurringTxs, pendingMilestones, accounts ->
         forecastUseCase.execute(
-            startingBalance = currentUiState.totalBalance,
+            startingBalance = currentUiState.cashBalance,
             scheduledTransactions = plannedOrRecurringTxs,
             pendingMilestones = pendingMilestones,
             accounts = accounts,
@@ -744,22 +747,13 @@ class DashboardViewModel(
         )
 
     // 8. Liquid vs Locked (Spendable vs Time-Deposits/Vaults)
-    val liquidVsLockedState: StateFlow<LiquidVsLockedState> = repository.allAccounts
-        .combine(repository.totalClearedNetWorth) { accounts, _ ->
-            var spendable = 0.0
-            var locked = 0.0
-            val now = Date()
-            val tallyAccounts = accounts.filter { it.includeInTally }
-            for (acc in tallyAccounts) {
-                val isCurrentlyLocked = acc.isLocked || 
-                    (acc.lockedUntil != null && acc.lockedUntil.after(now)) ||
-                    acc.type.equals(AccountType.INVESTMENT.displayName, ignoreCase = true)
-                if (isCurrentlyLocked) {
-                    locked += acc.currentBalance
-                } else {
-                    spendable += acc.currentBalance
-                }
-            }
+    val liquidVsLockedState: StateFlow<LiquidVsLockedState> = combine(
+        repository.allAccounts, preferencesRepository.baseCurrency, repository.allExchangeRates
+    ) { accounts, baseCurr, rates ->
+            // Same rule as the hero: savings / locked accounts are not liquid; amounts in the base currency.
+            val funds = com.example.util.Funds.split(accounts, baseCurr, rates)
+            val spendable = funds.liquid
+            val locked = funds.savings
             val total = spendable + locked
             val ratio = if (total > 0) (spendable / total).toFloat().coerceIn(0f, 1f) else 0.5f
             LiquidVsLockedState(

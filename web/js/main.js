@@ -1,10 +1,10 @@
-import { store, api } from './store.js?v=18';
-import { PAGES, NAV, NAV_GROUPS } from './pages.js?v=18';
-import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=18';
-import { lock, showLockScreen } from './security.js?v=18';
-import { hydratePhotos, viewPhoto } from './images.js?v=18';
-import { renderLanding } from './landing.js?v=18';
-import { svg } from './icons.js?v=18';
+import { store, api } from './store.js?v=19';
+import { PAGES, NAV, NAV_GROUPS } from './pages.js?v=19';
+import { esc, toast, viewPrefs, fmtDateTime, applyTheme } from './ui.js?v=19';
+import { lock, showLockScreen } from './security.js?v=19';
+import { hydratePhotos, viewPhoto } from './images.js?v=19';
+import { renderLanding } from './landing.js?v=19';
+import { svg } from './icons.js?v=19';
 
 const app = document.getElementById('app');
 applyTheme();
@@ -100,7 +100,7 @@ document.addEventListener('click', async (e) => {
   const g = e.target.closest('[data-action-global]');
   if (g) {
     if (g.dataset.actionGlobal === 'sync') store.sync().then(() => toast('Synced')).catch((x) => toast(x.message, 'err'));
-    if (g.dataset.actionGlobal === 'add') { toggleMore(false); (await import('./pages.js?v=18')).openTxForm(null); }
+    if (g.dataset.actionGlobal === 'add') { toggleMore(false); (await import('./pages.js?v=19')).openTxForm(null); }
     if (g.dataset.actionGlobal === 'lock') lock.lockNow();
     if (g.dataset.actionGlobal === 'more') toggleMore(document.getElementById('moreSheet')?.hidden);
     return;
@@ -156,7 +156,7 @@ async function start() {
   await store.load();
   applyTheme();
   let queued = false;
-  import('./logic.js?v=18').then((L) => { L.refreshLiveRates(); setInterval(() => L.refreshLiveRates(), 3600 * 1000); });
+  import('./logic.js?v=19').then((L) => { L.refreshLiveRates(); setInterval(() => L.refreshLiveRates(), 3600 * 1000); });
   // Re-render only when data changed; sync status updates just the sync indicators.
   let renderedVersion = -1, renderedHash = '';
   const schedule = (force = false) => {

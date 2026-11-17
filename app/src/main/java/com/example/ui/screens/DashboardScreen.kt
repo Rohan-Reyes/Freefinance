@@ -11,6 +11,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -506,6 +507,8 @@ fun DashboardScreen(
                     TotalBalanceHeroCard(
                         totalBalance = uiState.totalBalance,
                         cashBalance = uiState.cashBalance,
+                        liquidBalance = uiState.liquidBalance,
+                        savingsBalance = uiState.savingsBalance,
                         assetsBalance = uiState.assetsBalance,
                         includeAssets = uiState.includeAssetsInHero,
                         baseCurrency = uiState.baseCurrency,
@@ -826,7 +829,7 @@ fun DashboardScreen(
                 DashboardCardType.TOTAL_BALANCE -> {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            text = "Unified Net Assets: ${CurrencyUtils.formatCurrency(uiState.totalBalance, uiState.baseCurrency)}",
+                            text = "Liquid ${CurrencyUtils.formatCurrency(uiState.liquidBalance, uiState.baseCurrency)} · Savings ${CurrencyUtils.formatCurrency(uiState.savingsBalance, uiState.baseCurrency)} · Assets ${CurrencyUtils.formatCurrency(uiState.assetsBalance, uiState.baseCurrency)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -1263,6 +1266,8 @@ fun TotalBalanceHeroCard(
     accountCount: Int,
     onAddAccountClick: () -> Unit,
     cashBalance: Double = totalBalance,
+    liquidBalance: Double = cashBalance,
+    savingsBalance: Double = 0.0,
     assetsBalance: Double = 0.0,
     includeAssets: Boolean = true,
     onToggleIncludeAssets: (() -> Unit)? = null,
@@ -1365,14 +1370,14 @@ fun TotalBalanceHeroCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = if (includeAssets && assetsBalance > 0.0) "TOTAL NET WORTH" else "TOTAL LIQUID BALANCE",
+                            text = if (includeAssets) "NET WORTH" else "LIQUID FUNDS",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.ExtraBold,
                             color = contentColor.copy(alpha = 0.78f),
                             letterSpacing = 0.9.sp
                         )
                         Text(
-                            text = "Total Balance",
+                            text = if (includeAssets) "Liquid + savings + assets" else "Spendable now",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = contentColor
@@ -1405,42 +1410,40 @@ fun TotalBalanceHeroCard(
                 color = contentColor
             )
 
-            // Cash vs Valuables Sub-Pill Bar (when assets exist or toggle is available)
-            if (assetsBalance > 0.0 || onToggleIncludeAssets != null) {
+            // Liquid / savings / assets breakdown. Tapping switches between liquid funds and net worth.
+            val chipColor = if (isGradient) Color.Black.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+            val chips = buildList {
+                if (includeAssets) add("Liquid ${CurrencyUtils.formatCurrency(liquidBalance, baseCurrency, hideMoney)}")
+                if (savingsBalance != 0.0) add("Savings ${CurrencyUtils.formatCurrency(savingsBalance, baseCurrency, hideMoney)}")
+                if (includeAssets && assetsBalance != 0.0) add("Assets ${CurrencyUtils.formatCurrency(assetsBalance, baseCurrency, hideMoney)}")
+            }
+            val canToggle = onToggleIncludeAssets != null && (assetsBalance != 0.0 || savingsBalance != 0.0)
+            if (chips.isNotEmpty() || canToggle) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
+                    modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isGradient) Color.Black.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
-                    ) {
-                        Text(
-                            text = "Cash: ${CurrencyUtils.formatCurrency(cashBalance, baseCurrency, hideMoney)}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                    chips.forEach { label ->
+                        Surface(shape = RoundedCornerShape(8.dp), color = chipColor) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = contentColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-
-                    if (assetsBalance > 0.0 && onToggleIncludeAssets != null) {
+                    if (canToggle) {
                         Surface(
-                            onClick = onToggleIncludeAssets,
+                            onClick = onToggleIncludeAssets!!,
                             shape = RoundedCornerShape(8.dp),
-                            color = if (includeAssets) {
-                                if (isGradient) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                            } else {
-                                if (isGradient) Color.Black.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
-                            }
+                            color = if (isGradient) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                         ) {
                             Text(
-                                text = if (includeAssets) {
-                                    "+ Assets: ${CurrencyUtils.formatCurrency(assetsBalance, baseCurrency, hideMoney)}"
-                                } else {
-                                    "Assets Excluded (Tap)"
-                                },
+                                text = if (includeAssets) "Show liquid only" else "Show net worth",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                                 fontWeight = FontWeight.Bold,
                                 color = contentColor,

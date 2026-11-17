@@ -485,7 +485,7 @@ fun AddAccountSheet(
             )
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val types = listOf(AccountType.BANK, AccountType.CASH, AccountType.E_WALLET, AccountType.INVESTMENT)
+                val types = listOf(AccountType.BANK, AccountType.CASH, AccountType.E_WALLET, AccountType.SAVINGS, AccountType.INVESTMENT)
                 types.forEachIndexed { index, type ->
                     SegmentedButton(
                         selected = selectedType == type,
@@ -502,7 +502,8 @@ fun AddAccountSheet(
                             text = when (type) {
                                 AccountType.BANK -> "Bank"
                                 AccountType.CASH -> "Cash"
-                                AccountType.E_WALLET -> "E-Wallet"
+                                AccountType.E_WALLET -> "Wallet"
+                                AccountType.SAVINGS -> "Savings"
                                 AccountType.INVESTMENT -> "Deposit"
                                 else -> type.displayName
                             },
@@ -512,6 +513,14 @@ fun AddAccountSheet(
                     }
                 }
             }
+
+            Text(
+                text = if (selectedType == AccountType.SAVINGS || selectedType == AccountType.INVESTMENT || isLocked)
+                    "Counted as savings, not liquid funds."
+                else "Counted as liquid funds. Choose Savings or Deposit for money you're setting aside.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             // Accent Color Chooser
             Text(

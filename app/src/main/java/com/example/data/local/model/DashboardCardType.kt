@@ -29,8 +29,8 @@ enum class DashboardCardType(
         defaultEnabled = true
     ),
     LIQUID_VS_LOCKED(
-        title = "Liquid vs Locked",
-        description = "Spendable liquid funds vs locked savings and time-deposits",
+        title = "Liquid vs Savings",
+        description = "Spendable liquid funds vs savings, deposits and locked accounts",
         defaultEnabled = true
     ),
     PROJECT_TRACKER(

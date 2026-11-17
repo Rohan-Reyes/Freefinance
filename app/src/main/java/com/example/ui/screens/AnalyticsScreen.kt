@@ -1046,8 +1046,8 @@ private fun CashflowForecastTab(
     selectedMonth: Int,
     selectedYear: Int
 ) {
-    val totalLiquidBalance = remember(allAccounts) {
-        allAccounts.filter { it.includeInTally && !it.isLocked }.sumOf { it.currentBalance }
+    val totalLiquidBalance = remember(allAccounts, baseCurrency) {
+        com.example.util.Funds.split(allAccounts, baseCurrency).liquid
     }
 
     // Days calculation for projection
@@ -1580,7 +1580,9 @@ private fun FinancialHealthScoreTab(
     }
 
     // 3. Emergency Buffer Score (0 - 25 pts)
-    val liquidCash = allAccounts.filter { it.includeInTally && !it.isLocked }.sumOf { it.currentBalance }
+    // Emergency-fund runway counts liquid funds and savings (not assets), converted to the base currency.
+    val funds = com.example.util.Funds.split(allAccounts, baseCurrency)
+    val liquidCash = funds.total
     val monthsRunway = if (monthExpense > 0) liquidCash / monthExpense else 6.0
     val emergencyScore = when {
         monthsRunway >= 6.0 -> 25
@@ -1591,7 +1593,7 @@ private fun FinancialHealthScoreTab(
 
     // 4. Debt Burden Score (0 - 20 pts)
     val activeDebts = allDebts.filter { it.type.equals("Borrowed", ignoreCase = true) && it.status.equals("Active", ignoreCase = true) }.sumOf { it.remainingAmount }
-    val totalNetWorth = allAccounts.filter { it.includeInTally }.sumOf { it.currentBalance }
+    val totalNetWorth = funds.total
     val debtRatio = if (totalNetWorth > 0.0) (activeDebts / totalNetWorth * 100.0) else if (activeDebts > 0.0) 100.0 else 0.0
     val debtScore = when {
         activeDebts == 0.0 -> 20

@@ -1,15 +1,15 @@
 // Page renderers + actions. Each page: { title, render(params) -> html, actions: { name(el, params) } }
-import { store } from './store.js?v=18';
-import * as L from './logic.js?v=18';
-import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=18';
-import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=18';
-import { BANKS, bankFor } from './banks.js?v=18';
-import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=18';
-import { svg } from './icons.js?v=18';
+import { store } from './store.js?v=19';
+import * as L from './logic.js?v=19';
+import { lock, askPin, choosePin, TIMEOUT_OPTIONS } from './security.js?v=19';
+import { uploadPhoto, hydratePhotos, isSha, exportPhotos, importPhotos } from './images.js?v=19';
+import { BANKS, bankFor } from './banks.js?v=19';
+import { detectBrand, brandMark, networkMark, logoSha } from './brands.js?v=19';
+import { svg } from './icons.js?v=19';
 import {
   esc, money, fmtDate, fmtDateTime, argbToCss, toast, modal, confirmDialog, formModal, formHTML, readForm,
   lineChart, barPairs, donut, progressBar, viewPrefs, undo, celebrate, PALETTES, HERO_STYLES, applyTheme, THEME_MODES, themePrefs,
-} from './ui.js?v=18';
+} from './ui.js?v=19';
 
 // ---------------------------------------------------------------- shared helpers
 const sortByName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
@@ -158,10 +158,10 @@ const DASH_CARDS = [
     return `<h3>Receivables (owed to me) <a href="#/debts" class="more">All</a></h3>
       <div class="kpis">${kpi('Owed to you', money(lent.reduce((s, d) => s + d.remaining_amount, 0)), 'pos')}${kpi('You owe', money(bor.reduce((s, d) => s + d.remaining_amount, 0)), 'neg')}</div>
       ${lent.sort((a, b) => b.remaining_amount - a.remaining_amount).slice(0, 3).map((d) => `<div class="mini-row"><span>${esc(d.person_name)}${d.due_date ? `<br><small class="muted">due ${fmtDate(d.due_date)}</small>` : ''}</span><strong>${money(d.remaining_amount)}</strong></div>`).join('') || empty('No outstanding money owed to you.')}`; }],
-  ['LIQUID_VS_LOCKED', 'Liquid vs Locked', 'Spendable liquid funds vs locked savings and time-deposits', () => {
+  ['LIQUID_VS_LOCKED', 'Liquid vs Savings', 'Spendable liquid funds vs savings, deposits and locked accounts', () => {
     const ll = L.liquidVsLocked();
-    return `<h3>Liquid vs locked funds</h3><div class="split"><i style="width:${ll.ratio * 100}%"></i></div>
-      <div class="kpis">${kpi('Spendable liquid', money(ll.spendable))}${kpi('Locked / vaults', money(ll.locked))}</div><small class="muted">${Math.round(ll.ratio * 100)}% of your money is spendable</small>`; }],
+    return `<h3>Liquid funds vs savings</h3><div class="split"><i style="width:${ll.ratio * 100}%"></i></div>
+      <div class="kpis">${kpi('Liquid funds', money(ll.spendable))}${kpi('Savings', money(ll.locked))}</div><small class="muted">${Math.round(ll.ratio * 100)}% of your money is liquid</small>`; }],
   ['FORECAST_30', '30-Day Forecast', 'Projected balance over the next 30 days (planned, recurring, milestones, interest)', () => {
     const fc = L.forecast(30, viewPrefs.get('includeAssets', false));
     return `<h3>30-day cash-flow forecast</h3>${lineChart(fc.map((d) => ({ y: d.balance, label: fmtDate(d.date, { month: 'short', day: 'numeric' }) })), { fmt: (v) => money(v) })}
@@ -213,11 +213,11 @@ const dashboard = {
     const m = L.moneyFlow(monthStart());
     return `
     <section class="hero">
-      <div class="hero-top"><span class="eyebrow">Total ${inclAssets ? 'net worth' : 'balance'} · ${esc(b)}</span>
-        <div class="hero-tools"><label class="switch"><input type="checkbox" data-action="toggleAssets" ${inclAssets ? 'checked' : ''}><span>Include assets</span></label>
+      <div class="hero-top"><span class="eyebrow">${inclAssets ? 'Net worth' : 'Liquid funds'} · ${esc(b)}</span>
+        <div class="hero-tools"><label class="switch" title="Net worth adds savings and assets to your liquid funds"><input type="checkbox" data-action="toggleAssets" ${inclAssets ? 'checked' : ''}><span>Net worth</span></label>
         <a class="hero-icon" href="#/customize" title="Customize dashboard" aria-label="Customize dashboard">${svg('tune')}</a></div></div>
       <h1 class="hero-num">${money(nw.total)}</h1>
-      <div class="hero-stats"><span><small>Cash</small>${money(nw.cash)}</span><span><small>Assets</small>${money(nw.assets)}</span>
+      <div class="hero-stats">${inclAssets ? `<span><small>Liquid</small>${money(nw.liquid)}</span>` : ''}<span><small>Savings</small>${money(nw.savings)}</span><span><small>Assets</small>${money(nw.assets)}</span>
         <span><small>In this month</small><b class="pos">${money(m.income)}</b></span><span><small>Out this month</small><b class="neg">${money(m.expense)}</b></span></div>
       <div class="hero-actions">
         <button class="btn" data-action="quick" data-type="Expense">${svg('remove')}Expense</button>
@@ -263,7 +263,7 @@ const accountFields = (isSub) => [
   { key: 'name', label: 'Account name', required: true },
   ...(isSub ? [{ key: 'parent_account_id', label: 'Parent account', type: 'select', numeric: true, options: store.all('accounts').filter((a) => a.parent_account_id == null).sort(sortByName).map((a) => [a.id, a.name]), half: true },
     { key: 'sub_account_type', label: 'Sub-account type', type: 'select', options: L.SUB_ACCOUNT_TYPES.map((s) => [s, s]), half: true }] : []),
-  { key: 'type', label: 'Type', type: 'select', options: L.ACCOUNT_TYPES.map((t) => [t, t]), half: true },
+  { key: 'type', label: 'Type', type: 'select', options: L.ACCOUNT_TYPES.map((t) => [t, t]), half: true, hint: 'Savings and Locked Deposit accounts count as savings, not liquid funds.' },
   { key: 'currency_code', label: 'Currency', type: 'select', options: curOpts(), half: true },
   { key: 'initial_balance', label: 'Starting balance', type: 'number', half: true },
   { key: 'color', label: 'Color', type: 'color', half: true },
@@ -295,7 +295,7 @@ const accounts = {
     const tree = accountsTree();
     const nw = L.netWorth(false);
     const negatives = store.all('accounts').filter((a) => L.balanceOf(a) < 0);
-    return `<div class="page-head"><div><h1>Accounts</h1><p class="muted">Total in tally: <strong>${money(nw.cash)}</strong></p></div>
+    return `<div class="page-head"><div><h1>Accounts</h1><p class="muted">Liquid <strong>${money(nw.liquid)}</strong> · Savings <strong>${money(nw.savings)}</strong></p></div>
       <div class="row">${plus('Account', 'addAccount')}<button class="btn" data-action="addSub">${svg('add')}Sub-account</button></div></div>
       ${negatives.length ? `<div class="banner warn">${svg('warn')} Negative balance detected in ${negatives.map((a) => `<strong>${esc(a.name)}</strong>`).join(', ')}. ${negatives.map((a) => `<button class="btn small" data-action="adjust" data-id="${a.id}">Fix ${esc(a.name)} ${svg('arrow')}</button>`).join(' ')}</div>` : ''}
       ${tree.length ? `<div class="list">${tree.map(({ a, depth }) => {
@@ -305,7 +305,7 @@ const accounts = {
         return `<div class="acc-row ${depth ? 'sub' : ''}">
           ${depth ? `<span class="dot" style="background:${argbToCss(a.color)}"></span>` : accMark(a, 38)}
           <a class="acc-main" href="#/accounts/${a.id}"><strong>${esc(a.name)}</strong>
-            <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${locked ? ' · Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
+            <small>${esc(a.sub_account_type || a.type)} · ${esc(a.currency_code)}${L.isSavingsAccount(a) && !/savings/i.test(a.sub_account_type || a.type) ? ' · Savings' : ''}${locked ? ' · Locked' : ''}${a.include_in_tally ? '' : ' · Excluded'}${a.interest_rate_pa > 0 ? ` · ${a.interest_rate_pa}% p.a.` : ''}</small></a>
           <div class="acc-bal"><strong class="${bal < 0 ? 'neg' : ''}">${money(bal, a.currency_code)}</strong>${conv}</div>
           <div class="row-actions">
             ${bankFor(a.linked_app_package) ? `<a class="icon-btn launch" title="Open ${esc(bankFor(a.linked_app_package)[1])} website" href="${bankFor(a.linked_app_package)[2]}" target="_blank" rel="noopener noreferrer">${svg('open')}</a>` : ''}
@@ -822,7 +822,7 @@ function healthTab() {
     <div class="card"><h3>Health pillars breakdown</h3>
       ${pillar('Savings rate', h.savings, 30, `${h.savingsRate.toFixed(1)}% of this month's income saved`)}
       ${pillar('Budget discipline', h.budget, 25, store.all('budgets').length ? 'Budgets kept within their limits' : 'No budgets set (default points)')}
-      ${pillar('Emergency buffer', h.emergency, 25, `${h.runway.toFixed(1)} months of runway in liquid accounts`)}
+      ${pillar('Emergency buffer', h.emergency, 25, `${h.runway.toFixed(1)} months of runway in liquid funds and savings`)}
       ${pillar('Debt burden', h.debt, 20, h.activeDebts ? `${h.debtRatio.toFixed(1)}% of net cash owed` : 'No active borrowed debt')}</div>
     <div class="card span2"><h3>Smart financial recommendations</h3>${h.tips.length ? h.tips.map((t) => `<p class="tip">• ${esc(t)}</p>`).join('') : `<p class="pos">${svg('done')} Everything looks healthy — keep it up!</p>`}</div></div>`;
 }
@@ -953,7 +953,7 @@ const settings = {
     </div>`;
   },
   async loadServerInfo() {
-    const { api } = await import('./store.js?v=18');
+    const { api } = await import('./store.js?v=19');
     const tok = store.auth.token;
     try {
       const [status, me] = await Promise.all([api('/api/status'), api('/api/me', { token: tok })]);
@@ -963,7 +963,7 @@ const settings = {
     store.emit();
   },
   async loadDevices() {
-    try { const { api } = await import('./store.js?v=18'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
+    try { const { api } = await import('./store.js?v=19'); devicesCache = await api('/api/devices', { token: store.auth.token }); store.emit(); } catch { devicesCache = { devices: [], current: 0 }; }
   },
   actions: {
     palette: (el) => { store.setPrefs({ app_theme_preset: el.dataset.k, hero_background_style: el.dataset.hero }); applyTheme(); },
@@ -984,10 +984,10 @@ const settings = {
     editRate: (el) => { const r = store.get('exchange_rates', el.dataset.id); return formModal(`1 ${r.from_currency} = ? ${r.to_currency}`, [{ key: 'rate', label: 'Rate', type: 'number', required: true }], r, { onSubmit: (v) => { if (!(v.rate > 0)) throw new Error('Rate must be positive'); store.update('exchange_rates', r.id, { rate: v.rate, last_updated: Date.now() }); toast('Rate updated'); } }); },
     refreshRates: async () => { toast((await L.refreshLiveRates(true)) ? 'Live rates updated' : 'Could not refresh rates'); },
     delRate: async (el) => { if (await confirmDialog('Delete rate?', 'Conversions will use live market rates.')) store.remove('exchange_rates', el.dataset.id); },
-    newInvite: async () => { const { api } = await import('./store.js?v=18'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
-    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=18'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
-    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=18'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
-    changePassword: async () => { const { api } = await import('./store.js?v=18'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { const r = await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast(r.signedOut ? `Password changed. ${r.signedOut} other device(s) signed out.` : 'Password changed'); devicesCache = null; } }); },
+    newInvite: async () => { const { api } = await import('./store.js?v=19'); const r = await api('/api/admin/invite', { method: 'POST', body: {}, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('New invite code created'); store.emit(); },
+    closeInvite: async () => { if (!(await confirmDialog('Close sign-up?', 'The current invite code stops working. Existing accounts are not affected.', 'Close sign-up', 'danger'))) return; const { api } = await import('./store.js?v=19'); const r = await api('/api/admin/invite', { method: 'POST', body: { disable: true }, token: store.auth.token }); serverInfo = { ...serverInfo, invite: r }; toast('Sign-up closed'); store.emit(); },
+    revoke: async (el) => { if (await confirmDialog('Sign out that device?', 'It will need the password to sync again.', 'Sign out', 'danger')) { const { api } = await import('./store.js?v=19'); await api(`/api/devices/${el.dataset.id}`, { method: 'DELETE', token: store.auth.token }); devicesCache = null; toast('Device signed out'); store.emit(); } },
+    changePassword: async () => { const { api } = await import('./store.js?v=19'); return formModal('Change password', [{ key: 'currentPassword', label: 'Current password', type: 'password', required: true, autocomplete: 'current-password' }, { key: 'newPassword', label: 'New password (10+ characters)', type: 'password', required: true, autocomplete: 'new-password' }], {}, { onSubmit: async (v) => { const r = await api('/api/password', { method: 'POST', body: v, token: store.auth.token }); toast(r.signedOut ? `Password changed. ${r.signedOut} other device(s) signed out.` : 'Password changed'); devicesCache = null; } }); },
     exportJson: async () => {
       toast('Preparing backup…');
       const tables = Object.fromEntries(Object.keys(store.tables).map((t) => [t, store.all(t)]));

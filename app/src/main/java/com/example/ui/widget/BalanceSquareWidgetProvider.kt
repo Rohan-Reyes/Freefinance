@@ -33,14 +33,10 @@ class BalanceSquareWidgetProvider : AppWidgetProvider() {
                 val tallyAccounts = accounts.filter { it.includeInTally }
                 val rates = try { db.exchangeRateDao().getAllRates().first() } catch (e: Exception) { emptyList() }
                 val baseCurrency = try { UserPreferencesRepository(context).baseCurrency.first() } catch (e: Exception) { "PHP" }
-                val totalBalance = tallyAccounts.sumOf { acc ->
-                    CurrencyUtils.convert(
-                        amount = acc.currentBalance,
-                        fromCurrency = acc.currencyCode,
-                        toCurrency = baseCurrency,
-                        exchangeRates = rates
-                    )
-                }
+                // Liquid funds only: savings / locked accounts and assets are not liquid.
+                val funds = com.example.util.Funds.split(accounts, baseCurrency, rates)
+                val totalBalance = funds.liquid
+                val savingsInfo = if (funds.savings != 0.0) "Savings ${CurrencyUtils.formatCurrency(funds.savings, baseCurrency)}" else "All accounts"
                 val formattedBalance = CurrencyUtils.formatCurrency(totalBalance, baseCurrency)
                 val accountsCount = tallyAccounts.size
 
@@ -49,7 +45,7 @@ class BalanceSquareWidgetProvider : AppWidgetProvider() {
                         val views = RemoteViews(context.packageName, R.layout.widget_balance_square).apply {
                             setTextViewText(R.id.tv_total_balance, formattedBalance)
                             setTextViewText(R.id.tv_accounts_count, "$accountsCount accounts")
-                            setTextViewText(R.id.tv_sub_info, "All accounts")
+                            setTextViewText(R.id.tv_sub_info, savingsInfo)
 
                             setOnClickPendingIntent(R.id.widget_root, pendingAppIntent)
                             setOnClickPendingIntent(R.id.btn_quick_pic, pendingQuickPicIntent)

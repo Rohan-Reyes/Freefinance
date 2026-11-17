@@ -654,7 +654,7 @@ fun LiquidVsLockedCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Liquid vs locked funds",
+                        text = "Liquid funds vs savings",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -713,7 +713,7 @@ fun LiquidVsLockedCard(
                                     .background(LiquidCashColor)
                             )
                             Text(
-                                text = "Spendable Liquid",
+                                text = "Liquid funds",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -753,7 +753,7 @@ fun LiquidVsLockedCard(
                                     .background(LockedVaultColor)
                             )
                             Text(
-                                text = "Locked / Vaults",
+                                text = "Savings",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface

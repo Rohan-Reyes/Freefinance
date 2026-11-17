@@ -1,7 +1,7 @@
 // Finance logic mirrored from the Android app (FinanceRepository, DAOs, DashboardViewModel,
 // CurrencyUtils, RecurrenceHelper, ForecastCashFlowUseCase) so both clients show the same numbers.
-import { store, SCHEMA } from './store.js?v=18';
-import { svg } from './icons.js?v=18';
+import { store, SCHEMA } from './store.js?v=19';
+import { svg } from './icons.js?v=19';
 
 // ---------------- currencies (CurrencyUtils) ----------------
 export const CURRENCIES = [
@@ -102,12 +102,22 @@ export function clearedSumFor(accountId) {
 }
 
 // ---------------- dashboard numbers (DashboardViewModel.uiState) ----------------
+// Savings vs liquid funds (same rule as the Android app's Funds.kt): savings / deposit / investment account types,
+// savings-like sub-accounts and locked accounts are savings; everything else in the total is liquid. Assets are never liquid.
+const SAVINGS_SUB_TYPES = new Set(['savings', 'time deposit', 'emergency fund', 'investment', 'vault', 'stash', 'goals', 'personal goals']);
+export function isSavingsAccount(a, now = Date.now()) {
+  return !!a.is_locked || (a.locked_until && a.locked_until > now) || up(a.type) === 'SAVINGS' || up(a.type) === up('Locked Deposit / Investment')
+    || SAVINGS_SUB_TYPES.has(String(a.sub_account_type || '').trim().toLowerCase());
+}
+/** Liquid funds, savings and assets in the base currency. `total` is liquid funds, or net worth when assets are included. */
 export function netWorth(includeAssets) {
-  const b = base();
+  const b = base(), now = Date.now();
   const tally = store.all('accounts').filter((a) => a.include_in_tally);
-  const cash = tally.reduce((s, a) => s + convert(balanceOf(a), a.currency_code, b), 0);
+  let liquid = 0, savings = 0;
+  for (const a of tally) { const v = convert(balanceOf(a), a.currency_code, b); if (isSavingsAccount(a, now)) savings += v; else liquid += v; }
+  const cash = liquid + savings;
   const assets = store.all('assets').filter((x) => x.include_in_net_worth).reduce((s, x) => s + convert(x.estimated_value, x.currency_code, b), 0);
-  return { cash, assets, total: includeAssets ? cash + assets : cash, excluded: store.all('accounts').length - tally.length };
+  return { liquid, savings, cash, assets, total: includeAssets ? cash + assets : liquid, excluded: store.all('accounts').length - tally.length };
 }
 
 export function moneyFlow(from = 0, to = Infinity) {
@@ -120,11 +130,7 @@ export function moneyFlow(from = 0, to = Infinity) {
 }
 
 export function liquidVsLocked() {
-  let spendable = 0, locked = 0; const n = Date.now();
-  for (const a of store.all('accounts').filter((x) => x.include_in_tally)) {
-    const isLocked = a.is_locked || (a.locked_until && a.locked_until > n) || up(a.type) === up('Locked Deposit / Investment');
-    if (isLocked) locked += balanceOf(a); else spendable += balanceOf(a);
-  }
+  const nw = netWorth(false), spendable = nw.liquid, locked = nw.savings;
   const total = spendable + locked;
   return { spendable, locked, total, ratio: total > 0 ? Math.min(1, Math.max(0, spendable / total)) : 0.5 };
 }
@@ -216,7 +222,7 @@ export function forecast(days = 30, includeAssets = false) {
   const scheduled = store.all('transactions').filter((t) => t.status === 'Planned' || (t.recurrence_rule && t.recurrence_rule !== 'None'));
   const pendingMs = store.all('milestones').filter((m) => up(m.status) === 'PENDING');
   const accounts = store.all('accounts');
-  let running = netWorth(includeAssets).total;
+  let running = netWorth(false).cash;
   const out = [];
   const day0 = startOfDay(Date.now());
   for (let i = 0; i < days; i++) {
@@ -347,7 +353,7 @@ export function monthEndForecast(year, month) {
   const n = new Date(), isCurrent = n.getMonth() === month && n.getFullYear() === year;
   const currentDay = isCurrent ? n.getDate() : 1, daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysRemaining = Math.max(1, daysInMonth - currentDay + 1);
-  const liquid = store.all('accounts').filter((a) => a.include_in_tally && !a.is_locked).reduce((s, a) => s + balanceOf(a), 0);
+  const liquid = netWorth(false).liquid;
   const spent = monthTxs(year, month).filter((t) => t.type === 'Expense').reduce((s, t) => s + t.amount, 0);
   const burn = currentDay > 0 ? spent / currentDay : 0;
   const rec = recurringTemplates();
@@ -388,11 +394,11 @@ export function healthScore(year, month) {
   const adhered = budgets.filter((b) => store.all('transactions').filter((t) => t.category_id === b.category_id && t.type === 'Expense').reduce((s, t) => s + t.amount, 0) <= b.amount_limit).length;
   const budget = budgets.length ? Math.round((adhered / budgets.length) * 25) : 20;
   const accs = store.all('accounts');
-  const liquid = accs.filter((a) => a.include_in_tally && !a.is_locked).reduce((s, a) => s + balanceOf(a), 0);
+  const liquid = netWorth(false).cash; // emergency runway: liquid funds + savings (not assets)
   const runway = expense > 0 ? liquid / expense : 6;
   const emergency = runway >= 6 ? 25 : runway >= 3 ? 18 : runway >= 1 ? 10 : 4;
   const activeDebts = store.all('debts').filter((d) => up(d.type) === 'BORROWED' && up(d.status) === 'ACTIVE').reduce((s, d) => s + d.remaining_amount, 0);
-  const worth = accs.filter((a) => a.include_in_tally).reduce((s, a) => s + balanceOf(a), 0);
+  const worth = netWorth(false).cash;
   const debtRatio = worth > 0 ? (activeDebts / worth) * 100 : activeDebts > 0 ? 100 : 0;
   const debt = activeDebts === 0 ? 20 : debtRatio <= 15 ? 17 : debtRatio <= 30 ? 12 : debtRatio <= 50 ? 6 : 2;
   const total = Math.min(100, savings + budget + emergency + debt);
